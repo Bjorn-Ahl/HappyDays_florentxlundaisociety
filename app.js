@@ -31,7 +31,7 @@
   const upkeepInput = document.getElementById("upkeep");
   const upkeepOut = document.getElementById("upkeep-out");
   const sellExcess = document.getElementById("sell-excess");
-  const feedInWrap = document.getElementById("feed-in-wrap");
+
 
   const results = document.getElementById("results");
   const resultsLead = document.getElementById("results-lead");
@@ -195,9 +195,6 @@
       upkeepOut.textContent = `${v.toFixed(1)}%`;
     });
 
-    sellExcess.addEventListener("change", () => {
-      feedInWrap.hidden = !sellExcess.checked;
-    });
 
     citySelect.addEventListener("change", () => {
       const name = citySelect.value;
@@ -243,13 +240,18 @@
         rec.solarDisplacementRateSekPerKwh != null
           ? Math.round(rec.solarDisplacementRateSekPerKwh * 100)
           : flatOre;
+      const wholesaleOre = Math.round(rec.wholesaleRateSekPerKwh * 100);
       const prefix = zoneName ? `${zoneName} · ` : "";
       zoneDetail.textContent =
-        `${prefix}${flatOre} öre/kWh flat, ${dispOre} öre/kWh solar-weighted ` +
-        `(2025 Lund hourly)`;
-    } else if (zoneInfo) {
-      zoneDetail.textContent = `${zoneInfo.name} · ~${zoneInfo.avg_ore_per_kwh} öre/kWh avg`;
-    } else {
+        `${prefix}${flatOre} öre/kWh retail flat, ${dispOre} öre/kWh retail solar-weighted ` +
+        `(${wholesaleOre} öre/kWh wholesale + skatt/nät uplift, 2025 Lund hourly)`;
+} else if (zoneInfo) {
+  const retailOre = Math.round(rec.gridRateSekPerKwh * 100);
+  zoneDetail.textContent =
+    `${zoneInfo.name} · ~${zoneInfo.avg_ore_per_kwh} öre/kWh wholesale ` +
+    `(SCB) + ~${Math.round(rec.taxAndNetworkUpliftSekPerKwh * 100)} öre/kWh ` +
+    `skatt/nät = ~${retailOre} öre/kWh retail`;
+} else {
       zoneDetail.textContent = `grid rate ${(rec.gridRateSekPerKwh).toFixed(2)} SEK/kWh`;
     }
 
@@ -403,7 +405,6 @@
     const wInd = Number(document.getElementById("w-independence").value);
     const wSus = Number(document.getElementById("w-sustainability").value);
     const panelId = panelSelect.value;
-    const feedInOrePerKwh = Number(document.getElementById("feed-in-rate").value);
 
     // Validation
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -469,7 +470,6 @@
       budget: budget == null ? null : budget,
       upkeepPct: Number(upkeepInput.value),
       sellExcess: sellExcess.checked,
-      feedInOrePerKwh,
       panelId,
       priorities: { cost: wCost, independence: wInd, sustainability: wSus },
     };
@@ -477,6 +477,7 @@
       zone: rec.zone,
       gridRateSekPerKwh: rec.gridRateSekPerKwh,
       solarDisplacementRateSekPerKwh: rec.solarDisplacementRateSekPerKwh,
+      feedInRateSekPerKwh: rec.feedInRateSekPerKwh, 
       gridRateSource: rec.gridRateSource,
       panel: rec.panel ? { id: rec.panel.id, label: rec.panel.label } : null,
       autoPicked: rec.autoPicked,
