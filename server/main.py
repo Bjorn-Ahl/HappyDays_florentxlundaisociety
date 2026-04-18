@@ -68,6 +68,7 @@ _rate_lock = threading.Lock()
 _rate_hits: dict[str, deque] = {}
 
 
+
 def rate_limited(ip: str) -> bool:
     now = time.monotonic()
     with _rate_lock:
