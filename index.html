@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HappyDays — Solar Transition Advisor</title>
+  <meta name="description" content="A simple advisor for Swedish households considering solar panels. Enter your location, energy usage, and priorities to see a suggested energy mix." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header">
+    <div class="container">
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="4.5" fill="currentColor"></circle>
+          <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="12" y1="2" x2="12" y2="5"></line>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="5" y2="12"></line>
+            <line x1="19" y1="12" x2="22" y2="12"></line>
+            <line x1="4.5" y1="4.5" x2="6.6" y2="6.6"></line>
+            <line x1="17.4" y1="17.4" x2="19.5" y2="19.5"></line>
+            <line x1="4.5" y1="19.5" x2="6.6" y2="17.4"></line>
+            <line x1="17.4" y1="6.6" x2="19.5" y2="4.5"></line>
+          </g>
+        </svg>
+        <span class="brand-name">HappyDays</span>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero container" aria-labelledby="hero-title">
+      <h1 id="hero-title">Should you go solar?</h1>
+      <p class="hero-sub">
+        A simple advisor for Swedish households weighing up solar panels.
+        Tell us where you live, how much energy you use, and what matters
+        most — we'll suggest an energy mix.
+      </p>
+    </section>
+
+    <section class="container" aria-labelledby="form-title">
+      <div class="card">
+        <h2 id="form-title">Your situation</h2>
+        <form id="advisor-form" novalidate>
+          <div class="field">
+            <label for="location">Location</label>
+            <input
+              type="text"
+              id="location"
+              name="location"
+              placeholder="Stockholm"
+              autocomplete="address-level2"
+              required
+            />
+            <p class="hint">Swedish city or region.</p>
+          </div>
+
+          <div class="field">
+            <label for="usage">Current energy usage (kWh/year)</label>
+            <input
+              type="number"
+              id="usage"
+              name="usage"
+              placeholder="15000"
+              min="0"
+              step="100"
+              inputmode="numeric"
+              required
+            />
+            <p class="hint">A rough estimate is fine.</p>
+          </div>
+
+          <div class="field">
+            <label for="budget">
+              Budget (SEK) <span class="muted">— optional</span>
+            </label>
+            <input
+              type="number"
+              id="budget"
+              name="budget"
+              placeholder="e.g. 120000"
+              min="0"
+              step="1000"
+              inputmode="numeric"
+            />
+            <p class="hint">Leave blank if you're just exploring.</p>
+          </div>
+
+          <fieldset class="field priorities">
+            <legend>Your priorities</legend>
+            <p class="hint">
+              Use the sliders to set the <strong>relative importance</strong> of each goal
+              (1 = least important, 5 = most important). The weights are compared to each other.
+            </p>
+
+            <div class="slider-row">
+              <label for="w-cost">Cost <span class="muted">(save money)</span></label>
+              <input type="range" id="w-cost" name="w-cost" min="1" max="5" step="1" value="3" />
+              <output for="w-cost" id="w-cost-out" aria-live="polite">3</output>
+            </div>
+
+            <div class="slider-row">
+              <label for="w-independence">Independence <span class="muted">(off the grid)</span></label>
+              <input type="range" id="w-independence" name="w-independence" min="1" max="5" step="1" value="3" />
+              <output for="w-independence" id="w-independence-out" aria-live="polite">3</output>
+            </div>
+
+            <div class="slider-row">
+              <label for="w-sustainability">Sustainability <span class="muted">(low emissions)</span></label>
+              <input type="range" id="w-sustainability" name="w-sustainability" min="1" max="5" step="1" value="3" />
+              <output for="w-sustainability" id="w-sustainability-out" aria-live="polite">3</output>
+            </div>
+          </fieldset>
+
+          <div class="actions">
+            <button type="submit" class="btn-primary">Calculate</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section
+      class="container"
+      id="results"
+      aria-labelledby="results-title"
+      hidden
+    >
+      <div class="card">
+        <h2 id="results-title">Your suggested mix</h2>
+        <p class="results-lead" id="results-lead"></p>
+
+        <div class="result-block">
+          <h3>Recommended energy mix</h3>
+          <div
+            class="stacked-bar"
+            role="img"
+            aria-label="Recommended energy mix stacked bar"
+            id="mix-bar"
+          >
+            <div class="seg seg-solar" id="seg-solar" style="width: 0%"></div>
+            <div class="seg seg-wind" id="seg-wind" style="width: 0%"></div>
+            <div class="seg seg-grid" id="seg-grid" style="width: 0%"></div>
+          </div>
+          <ul class="legend" aria-hidden="true">
+            <li><span class="swatch swatch-solar"></span> Solar <span id="pct-solar">0%</span></li>
+            <li><span class="swatch swatch-wind"></span> Wind <span id="pct-wind">0%</span></li>
+            <li><span class="swatch swatch-grid"></span> Grid <span id="pct-grid">0%</span></li>
+          </ul>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-block metric">
+            <h3>Estimated energy coverage</h3>
+            <p class="metric-value" id="coverage-value">—</p>
+            <p class="metric-label">of your annual usage met by on-site generation</p>
+          </div>
+
+          <div class="result-block metric">
+            <h3>Independence score</h3>
+            <p class="metric-value"><span id="independence-value">—</span><span class="metric-unit">/100</span></p>
+            <p class="metric-label" id="independence-label">—</p>
+          </div>
+        </div>
+
+        <div class="result-block">
+          <h3>Cost over 10 years</h3>
+          <p class="hint">
+            Grid-only vs. recommended mix. Naive projection —
+            no inflation, no subsidies, no resale.
+          </p>
+          <div class="chart-wrap">
+            <svg
+              id="cost-chart"
+              viewBox="0 0 600 260"
+              role="img"
+              aria-label="10-year cumulative cost comparison"
+              preserveAspectRatio="none"
+            ></svg>
+          </div>
+          <div class="table-wrap">
+            <table id="cost-table">
+              <caption class="sr-only">Year-by-year cumulative cost, grid-only versus recommended mix</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Year</th>
+                  <th scope="col">Grid only (SEK)</th>
+                  <th scope="col">Recommended (SEK)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Data source: SMHI (planned) — calculations are currently placeholders.</p>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
