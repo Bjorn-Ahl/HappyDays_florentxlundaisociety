@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HappyDays — Solar Transition Advisor</title>
-  <meta name="description" content="A simple advisor for Swedish households considering solar panels. Enter your location, energy usage, and priorities to see a suggested energy mix and payback period." />
+  <meta name="description" content="A simple advisor for Swedish households considering solar panels. Enter your location and energy usage to see a suggested energy mix and payback period." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="styles.css" />
@@ -38,7 +38,7 @@
       <h1 id="hero-title">Should you go solar?</h1>
       <p class="hero-sub">
         A simple advisor for Swedish households weighing up solar panels.
-        Pick your location on the map, tell us your usage and priorities —
+        Pick your location on the map, tell us your usage —
         we'll suggest an energy mix and estimate a payback period.
       </p>
     </section>
@@ -189,32 +189,55 @@
             </p>
           </div>
 
-          <!-- 8. PRIORITIES (kept from v1) -->
-          <fieldset class="field priorities">
-            <legend>Your priorities</legend>
+          <!-- 8. ELECTRIC VEHICLE -->
+          <div class="field">
+            <div class="checkbox-row">
+              <input type="checkbox" id="has-ev" name="has-ev" />
+              <label for="has-ev">Household charges an electric vehicle at home</label>
+            </div>
             <p class="hint">
-              Use the sliders to set the <strong>relative importance</strong> of each goal
-              (1 = least important, 5 = most important).
+              EV charging usually happens in the evening or overnight — exactly
+              when solar has stopped producing and grid rates are at their
+              retail peak. A home battery lets stored midday solar cover that
+              load instead.
             </p>
+          </div>
 
-            <div class="slider-row">
-              <label for="w-cost">Cost <span class="muted">(save money)</span></label>
-              <input type="range" id="w-cost" name="w-cost" min="1" max="5" step="1" value="3" />
-              <output for="w-cost" id="w-cost-out">3</output>
+          <!-- 9. BATTERY -->
+          <div class="field">
+            <div class="checkbox-row">
+              <input type="checkbox" id="battery-enabled" name="battery-enabled" />
+              <label for="battery-enabled">Add a home battery</label>
             </div>
-
-            <div class="slider-row">
-              <label for="w-independence">Independence <span class="muted">(off the grid)</span></label>
-              <input type="range" id="w-independence" name="w-independence" min="1" max="5" step="1" value="3" />
-              <output for="w-independence" id="w-independence-out">3</output>
+            <div class="feed-in-row" id="battery-row" hidden>
+              <label for="battery-kwh">Battery capacity (kWh)</label>
+              <input
+                type="number"
+                id="battery-kwh"
+                name="battery-kwh"
+                placeholder="10"
+                min="1"
+                max="100"
+                step="0.5"
+                inputmode="decimal"
+              />
+              <p class="hint" id="battery-cost-hint">
+                Rough installed cost: <span id="battery-cost-estimate">—</span>
+                <span class="muted">(~6 500 SEK/kWh).</span>
+              </p>
             </div>
-
-            <div class="slider-row">
-              <label for="w-sustainability">Sustainability <span class="muted">(low emissions)</span></label>
-              <input type="range" id="w-sustainability" name="w-sustainability" min="1" max="5" step="1" value="3" />
-              <output for="w-sustainability" id="w-sustainability-out">3</output>
-            </div>
-          </fieldset>
+            <p class="hint" id="battery-ev-warning" hidden>
+              <strong>Strongly recommended with an EV.</strong> Without a
+              battery, EV charging pulls from the grid at full retail rates
+              (wholesale + elskatt + moms + nätavgift) — typically the most
+              expensive kWh in your bill. A battery absorbs your midday solar
+              surplus and discharges it during evening charging.
+            </p>
+            <p class="hint">
+              A battery stores midday surplus and releases it in the evening,
+              pushing self-consumption from ~35 % up toward 70–90 %.
+            </p>
+          </div>
 
           <div class="actions">
             <button type="submit" class="btn-primary">Calculate</button>
@@ -283,12 +306,6 @@
             <h3>Estimated energy coverage</h3>
             <p class="metric-value" id="coverage-value">—</p>
             <p class="metric-label">of your annual usage met by on-site generation</p>
-          </div>
-
-          <div class="result-block metric">
-            <h3>Independence score</h3>
-            <p class="metric-value"><span id="independence-value">—</span><span class="metric-unit">/100</span></p>
-            <p class="metric-label" id="independence-label">—</p>
           </div>
         </div>
 

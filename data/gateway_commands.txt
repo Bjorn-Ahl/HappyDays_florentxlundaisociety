@@ -1,3 +1,3 @@
 {"action": "set_prices", "value": "73.8,73.5,67.8,67.5,67.4,68.3,69.2,69.2,66.1,58.5,45.5,37.8,32.0,33.3,32.7,33.9,47.8,71.4,76.0,104.2,85.6,105.4,66.3,58.4"}
-{"action": "set_current_price", "value": "33.9"}
-{"action": "set_hour", "value": "15"}
+{"action": "set_current_price", "value": "71.4"}
+{"action": "set_hour", "value": "17"}

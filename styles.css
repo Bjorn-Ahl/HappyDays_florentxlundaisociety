@@ -156,24 +156,11 @@ body {
   margin-bottom: 20px;
 }
 
-.field label,
-.priorities legend {
+.field label {
   display: block;
   font-weight: 600;
   margin-bottom: 6px;
   color: var(--text);
-}
-
-.priorities {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 16px 18px 8px;
-  margin: 0 0 20px;
-}
-
-.priorities legend {
-  padding: 0 6px;
-  font-size: 1rem;
 }
 
 .field input[type="text"],

@@ -81,6 +81,23 @@
   // above wholesale. Sellers do NOT pay elskatt / moms / nätavgift on their
   // surplus, so this uplift is independent of TAX_AND_NETWORK.
   const FEED_IN_UPLIFT_SEK_PER_KWH = 0.55;
+  // Rough installed cost per kWh of home battery storage (incl. inverter
+  // integration, pre-subsidy). Swedish retail in 2024 ranges ~5 500-8 500
+  // SEK/kWh depending on chemistry and installer; 6 500 is a mid-point.
+  const BATTERY_COST_SEK_PER_KWH = 6500;
+  // Battery self-consumption model. Without a battery the ratio sits at
+  // SELF_CONSUMPTION_RATIO_NO_BATTERY (~0.35). As battery capacity grows
+  // relative to daily usage, the ratio saturates toward BATTERY_RATIO_CAP.
+  // k controls how fast it saturates — k=2 gives ~0.60 at 0.3×daily usage,
+  // ~0.83 at 1×daily usage, ~0.89 at 2×daily. Meant as a rough shape, not
+  // an hourly simulation.
+  //
+  // Households with an EV charging at home have a much larger, more
+  // predictable evening load, so a battery of a given size cycles deeper
+  // and displaces more kWh — we bump k to saturate faster.
+  const BATTERY_RATIO_CAP = 0.90;
+  const BATTERY_RATIO_K = 2;
+  const BATTERY_RATIO_K_EV = 3;
 
   // --- Geography helpers ---------------------------------------------------
 
@@ -430,12 +447,18 @@
       roofAreaM2,
       upkeepFraction,
       sellExcess,
+      batteryKwh,
+      hasEv,
       panelId,
       panels,
       stations,
       zones,
       localPriceStats,
     } = input;
+
+    const batteryCapacityKwh =
+      Number.isFinite(batteryKwh) && batteryKwh > 0 ? Number(batteryKwh) : 0;
+    const batteryCost = Math.round(batteryCapacityKwh * BATTERY_COST_SEK_PER_KWH);
 
     const zone = priceZoneFor(lat);
     const irradiance = irradianceFor(lat, lng, stations);
@@ -507,9 +530,19 @@
       wholesaleRateSekPerKwh + FEED_IN_UPLIFT_SEK_PER_KWH;
 
     // Without a battery, only ~35% of produced solar is self-consumed; the
-    // rest is exported. Eventually we'll take this as an input (battery
-    // capacity shifts it to 0.7-0.9); for now it's a constant.
-    const selfConsumptionRatio = SELF_CONSUMPTION_RATIO_NO_BATTERY;
+    // rest is exported. A battery shifts surplus from midday into the
+    // evening, saturating toward BATTERY_RATIO_CAP as capacity grows
+    // relative to daily usage.
+    let selfConsumptionRatio = SELF_CONSUMPTION_RATIO_NO_BATTERY;
+    if (batteryCapacityKwh > 0 && usage > 0) {
+      const dailyUsage = usage / 365;
+      const x = batteryCapacityKwh / dailyUsage;
+      const k = hasEv ? BATTERY_RATIO_K_EV : BATTERY_RATIO_K;
+      const saturation = 1 - Math.exp(-k * x);
+      selfConsumptionRatio =
+        SELF_CONSUMPTION_RATIO_NO_BATTERY +
+        (BATTERY_RATIO_CAP - SELF_CONSUMPTION_RATIO_NO_BATTERY) * saturation;
+    }
 
     const mix = computeMix({
       usage,
@@ -535,7 +568,8 @@
         (mix.solar * usage) / (panelOutput.annualKwh * selfConsumptionRatio)
       );
     }
-    const scaledInstallCost = Math.round(panelOutput.installCost * installScale);
+    const scaledPanelInstallCost = Math.round(panelOutput.installCost * installScale);
+    const scaledInstallCost = scaledPanelInstallCost + batteryCost;
     const scaledSolarKwh = Math.round(panelOutput.annualKwh * installScale);
 
     // Split scaled production into what's self-consumed vs. exported.
@@ -570,6 +604,12 @@
       autoPicked,
       panelOutput,
       installCost: scaledInstallCost,
+      panelInstallCost: scaledPanelInstallCost,
+      batteryKwh: batteryCapacityKwh,
+      batteryCost,
+      batteryCostSekPerKwh: BATTERY_COST_SEK_PER_KWH,
+      hasEv: Boolean(hasEv),
+      selfConsumptionRatio,
       mix,
       projection,
       paybackYears,

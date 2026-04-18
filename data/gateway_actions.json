@@ -1,6 +1,6 @@
 {
   "zone": "SE4",
-  "generated_at": "2026-04-18T15:51:27+02:00",
+  "generated_at": "2026-04-18T17:02:28+02:00",
   "stale": false,
   "source": "elprisetjustnu.se day-ahead, hourly means from 15-min slots",
   "actions": [
@@ -10,11 +10,11 @@
     },
     {
       "action": "set_current_price",
-      "value": "33.9"
+      "value": "71.4"
     },
     {
       "action": "set_hour",
-      "value": "15"
+      "value": "17"
     }
   ]
 }

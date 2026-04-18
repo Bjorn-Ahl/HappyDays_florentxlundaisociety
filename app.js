@@ -31,6 +31,13 @@
   const upkeepInput = document.getElementById("upkeep");
   const upkeepOut = document.getElementById("upkeep-out");
   const sellExcess = document.getElementById("sell-excess");
+  const batteryEnabled = document.getElementById("battery-enabled");
+  const batteryRow = document.getElementById("battery-row");
+  const batteryKwhInput = document.getElementById("battery-kwh");
+  const batteryCostEstimate = document.getElementById("battery-cost-estimate");
+  const batteryEvWarning = document.getElementById("battery-ev-warning");
+  const hasEvInput = document.getElementById("has-ev");
+  const BATTERY_COST_SEK_PER_KWH = 6500;
 
 
   const results = document.getElementById("results");
@@ -50,8 +57,6 @@
   const pctSolar = document.getElementById("pct-solar");
   const pctGrid = document.getElementById("pct-grid");
   const coverageValue = document.getElementById("coverage-value");
-  const independenceValue = document.getElementById("independence-value");
-  const independenceLabel = document.getElementById("independence-label");
 
   const costTableBody = document.querySelector("#cost-table tbody");
 
@@ -181,19 +186,35 @@
   // ---- Live output bindings ---------------------------------------------
 
   function bindLiveOutputs() {
-    ["w-cost", "w-independence", "w-sustainability"].forEach((id) => {
-      const input = document.getElementById(id);
-      const out = document.getElementById(`${id}-out`);
-      if (!input || !out) return;
-      input.addEventListener("input", () => {
-        out.textContent = input.value;
-      });
-    });
 
     upkeepInput.addEventListener("input", () => {
       const v = Number(upkeepInput.value);
       upkeepOut.textContent = `${v.toFixed(1)}%`;
     });
+
+    function updateBatteryCost() {
+      const kwh = Number(batteryKwhInput.value);
+      if (Number.isFinite(kwh) && kwh > 0) {
+        batteryCostEstimate.textContent = `${fmtSek.format(
+          Math.round(kwh * BATTERY_COST_SEK_PER_KWH)
+        )} SEK`;
+      } else {
+        batteryCostEstimate.textContent = "—";
+      }
+    }
+    function updateEvWarning() {
+      batteryEvWarning.hidden = !(hasEvInput.checked && !batteryEnabled.checked);
+    }
+    batteryEnabled.addEventListener("change", () => {
+      batteryRow.hidden = !batteryEnabled.checked;
+      if (batteryEnabled.checked && !batteryKwhInput.value) {
+        batteryKwhInput.value = "10";
+      }
+      updateBatteryCost();
+      updateEvWarning();
+    });
+    batteryKwhInput.addEventListener("input", updateBatteryCost);
+    hasEvInput.addEventListener("change", updateEvWarning);
 
 
     citySelect.addEventListener("change", () => {
@@ -364,16 +385,8 @@
       );
   }
 
-  function independenceTier(score) {
-    if (score < 34) return "Low independence — mostly grid-reliant.";
-    if (score < 67) return "Moderate independence — meaningful self-supply.";
-    return "High independence — largely self-sufficient on paper.";
-  }
-
-  function renderMetrics({ coverage, independence }) {
+  function renderMetrics({ coverage }) {
     coverageValue.textContent = `${Math.round(coverage * 100)}%`;
-    independenceValue.textContent = independence;
-    independenceLabel.textContent = independenceTier(independence);
   }
 
   function renderTable(rows) {
@@ -401,9 +414,13 @@
     const budgetRaw = document.getElementById("budget").value;
     const budget = budgetRaw === "" ? undefined : Number(budgetRaw);
     const upkeepFraction = Number(upkeepInput.value) / 100;
-    const wCost = Number(document.getElementById("w-cost").value);
-    const wInd = Number(document.getElementById("w-independence").value);
-    const wSus = Number(document.getElementById("w-sustainability").value);
+    const batteryKwh = batteryEnabled.checked
+      ? Number(batteryKwhInput.value) || 0
+      : 0;
+    const hasEv = hasEvInput.checked;
+    const wCost = 3;
+    const wInd = 3;
+    const wSus = 3;
     const panelId = panelSelect.value;
 
     // Validation
@@ -432,7 +449,8 @@
       roofAreaM2,
       upkeepFraction,
       sellExcess: sellExcess.checked,
-      feedInOrePerKwh,
+      batteryKwh,
+      hasEv,
       panelId,
       panels: window.PANEL_TYPES,
       stations: irradianceStations,
@@ -470,6 +488,8 @@
       budget: budget == null ? null : budget,
       upkeepPct: Number(upkeepInput.value),
       sellExcess: sellExcess.checked,
+      batteryKwh,
+      hasEv,
       panelId,
       priorities: { cost: wCost, independence: wInd, sustainability: wSus },
     };
@@ -482,13 +502,17 @@
       panel: rec.panel ? { id: rec.panel.id, label: rec.panel.label } : null,
       autoPicked: rec.autoPicked,
       installCost: rec.installCost,
+      panelInstallCost: rec.panelInstallCost,
+      batteryKwh: rec.batteryKwh,
+      batteryCost: rec.batteryCost,
+      hasEv: rec.hasEv,
+      selfConsumptionRatio: rec.selfConsumptionRatio,
       panelOutput: rec.panelOutput,
       irradiance: rec.irradiance,
       mix: {
         solar: Math.round(rec.mix.solar * 100),
         grid: Math.round(rec.mix.grid * 100),
         coverage: Math.round(rec.mix.coverage * 100),
-        independence: rec.mix.independence,
       },
       paybackYears: rec.paybackYears,
       annualSavings: rec.projection ? rec.projection.annualSavings : null,
