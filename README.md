@@ -1,11 +1,11 @@
 # HappyDays
 
 A solar-transition advisor for Swedish homeowners — built for
-*florent x lunda.i.society*.
+*florent x lund ai society*.
 
 ## Problem
 
-Solar-install decisions in Sweden mean piecing together SMHI irradiance,
+Solar decisions in Sweden mean piecing together SMHI irradiance,
 SCB zone prices, *grönt avdrag*, *skattereduktion*, SE1–SE4 splits, and
 installer quotes that quietly optimise for the installer. No one
 calculator shows its work or lets you ask a follow-up.
@@ -19,7 +19,7 @@ follow-ups.
 
 ## Technical approach
 
-- **Frontend** — plain HTML/CSS/vanilla JS, no build step. Leaflet +
+- **Frontend** — plain HTML/CSS/vanilla JS. Leaflet +
   OSM map, `calc.js` as a pure `window.HappyDaysCalc` module.
 - **Data** — SMHI stations for irradiance, SCB for zone averages,
   *elprisetjustnu.se* for live hourly Nord Pool (all four zones,
