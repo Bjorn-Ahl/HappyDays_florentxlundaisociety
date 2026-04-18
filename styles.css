@@ -13,7 +13,6 @@
   --primary-contrast: #ffffff;
   --accent: #2a5c8a;             /* deep nordic blue */
   --solar: #e6a100;              /* warm yellow */
-  --wind: #7ab6c9;               /* soft blue */
   --grid: #9aa6a9;               /* neutral grey */
   --focus-ring: #0b5fff;
   --warn-bg: #fff4e0;
@@ -377,7 +376,7 @@ body {
 }
 
 .result-block {
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 .result-block:first-of-type {
@@ -387,9 +386,9 @@ body {
 .result-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin: 0 0 8px;
-  padding: 16px;
+  gap: 14px;
+  margin: 0 0 4px;
+  padding: 14px 16px;
   background: #f1f6f3;
   border: 1px solid #e0ebe4;
   border-radius: var(--radius-sm);
@@ -424,8 +423,8 @@ body {
   background: linear-gradient(180deg, #f1f6f3 0%, #e7f0eb 100%);
   border: 1px solid #cfe0d6;
   border-radius: var(--radius);
-  padding: 20px 24px;
-  margin-top: 24px;
+  padding: 18px 22px;
+  margin-top: 20px;
 }
 
 .payback h3 {
@@ -437,7 +436,7 @@ body {
 }
 
 .payback-value {
-  margin: 4px 0;
+  margin: 2px 0;
   font-size: 2.8rem;
   font-weight: 800;
   color: var(--primary);
@@ -457,6 +456,22 @@ body {
   font-size: 1.4rem;
 }
 
+.payback-savings {
+  margin: 6px 0 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.payback-savings[hidden] {
+  display: none;
+}
+
+.payback-savings.is-negative {
+  color: var(--warn-text);
+}
+
 .fallback-warning {
   background: var(--warn-bg);
   color: var(--warn-text);
@@ -468,19 +483,19 @@ body {
 .result-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-top: 24px;
+  gap: 14px;
+  margin-top: 20px;
 }
 
 .metric {
   background: #f1f6f3;
   border: 1px solid #e0ebe4;
   border-radius: var(--radius-sm);
-  padding: 18px;
+  padding: 14px 16px;
 }
 
 .metric-value {
-  margin: 6px 0 4px;
+  margin: 4px 0 2px;
   font-size: 2rem;
   font-weight: 700;
   color: var(--primary);
@@ -522,7 +537,7 @@ body {
 .legend {
   list-style: none;
   padding: 0;
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   display: flex;
   flex-wrap: wrap;
   gap: 18px;
@@ -552,25 +567,9 @@ body {
 .swatch-solar { background: var(--solar); }
 .swatch-grid  { background: var(--grid); }
 
-/* Chart */
-.chart-wrap {
-  width: 100%;
-  margin-top: 12px;
-  background: #fafcfb;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-}
-
-#break-even-chart {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
 /* Table */
 .table-wrap {
-  margin-top: 16px;
+  margin-top: 12px;
   overflow-x: auto;
 }
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HappyDays — Solar Transition Advisor</title>
-  <meta name="description" content="A simple advisor for Swedish households considering solar panels. Enter your location, energy usage, and priorities to see a suggested energy mix, payback period, and break-even chart." />
+  <meta name="description" content="A simple advisor for Swedish households considering solar panels. Enter your location, energy usage, and priorities to see a suggested energy mix and payback period." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="styles.css" />
@@ -39,7 +39,7 @@
       <p class="hero-sub">
         A simple advisor for Swedish households weighing up solar panels.
         Pick your location on the map, tell us your usage and priorities —
-        we'll suggest an energy mix, estimate a payback period, and show the break-even.
+        we'll suggest an energy mix and estimate a payback period.
       </p>
     </section>
 
@@ -225,6 +225,10 @@
             <dt>Nearest irradiance station</dt>
             <dd id="irradiance-summary">—</dd>
           </div>
+          <div>
+            <dt>Solar production flow</dt>
+            <dd id="flow-summary">—</dd>
+          </div>
         </dl>
 
         <!-- PAYBACK PERIOD — prominent -->
@@ -232,24 +236,7 @@
           <h3>Payback period</h3>
           <p class="payback-value" id="payback-value">—</p>
           <p class="metric-label" id="payback-label">years until your cumulative savings cover the install cost</p>
-        </div>
-
-        <!-- BREAK-EVEN CHART -->
-        <div class="result-block">
-          <h3>Break-even over 25 years</h3>
-          <p class="hint">
-            Cumulative SEK. Two lines: grid-only vs. solar-investment.
-            Crossover is your payback point.
-          </p>
-          <div class="chart-wrap">
-            <svg
-              id="break-even-chart"
-              viewBox="0 0 600 280"
-              role="img"
-              aria-label="25-year break-even chart comparing grid-only versus solar investment"
-              preserveAspectRatio="none"
-            ></svg>
-          </div>
+          <p class="payback-savings" id="payback-savings" hidden></p>
         </div>
 
         <div class="result-block">
@@ -311,8 +298,8 @@
     <div class="container">
       <p>
         Irradiance data: SMHI Open Data (parameter 11, global irradiance, 3-year mean).
-        Electricity prices: Nord Pool 2022–2024 zone averages. Cost model is
-        illustrative — no inflation or subsidies.
+        Electricity prices: SCB Elprisstatistik 2022–2024 (rörligt contract, excl.
+        elskatt/moms/nätavgift). Cost model is illustrative — no inflation or subsidies.
       </p>
     </div>
   </footer>

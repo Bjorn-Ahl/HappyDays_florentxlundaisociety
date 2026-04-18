@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-04-18",
+  "zone": "SE4",
+  "source": "Hourly 2025 SE4 day-ahead prices (lund_2025_elpris_SE4.csv) intersected with SMHI station 53430 global irradiance (lund_2025_param120.csv). Solar-weighted mean uses W/m^2 as the weight, so the result approximates the average SEK/kWh a Lund rooftop PV system actually displaces from the grid. Prefer this over the Nord Pool 2022-2024 flat average for SE4 payback.",
+  "stats": {
+    "hours_sampled": 8639,
+    "daylight_hours": 4388,
+    "simple_mean_sek_per_kwh": 0.6726,
+    "daylight_mean_sek_per_kwh": 0.6678,
+    "solar_weighted_mean_sek_per_kwh": 0.4372,
+    "simple_mean_ore_per_kwh": 67.3,
+    "solar_weighted_mean_ore_per_kwh": 43.7
+  }
+}

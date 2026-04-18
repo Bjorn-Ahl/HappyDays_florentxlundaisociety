@@ -17,15 +17,25 @@
  *   - Panel DC:AC + soiling + orientation losses rolled into PERFORMANCE_RATIO
  *   - Roof covered by panels at 70% packing ratio (inverters, gaps, edges)
  *   - Upkeep is a % of install cost per year, applied from year 1
- *   - Grid price is a flat zone average (no ToU, no transmission fees)
+ *   - Grid price: flat zone average, or — for SE4 — the 2025 Lund hourly
+ *     series split into a flat baseline rate and a solar-weighted
+ *     displacement rate (both loaded from data/lund_price_stats.json)
+ *   - Self-consumption: without a battery, only ~35% of produced solar
+ *     gets consumed on-site; the rest is exported (constant until an
+ *     hourly match / battery model lands). See SELF_CONSUMPTION_RATIO_NO_BATTERY.
  *   - Feed-in sale price is user-specified in öre/kWh
+ *   - Product-facing optimism: displacement savings are scaled up by 3%
+ *     (SAVINGS_OPTIMISM_MULTIPLIER) to match the "installer quote" framing
+ *     common in Swedish solar sales material. The bias applies ONLY to
+ *     self-consumption savings — feed-in revenue and upkeep are untouched,
+ *     so we never manufacture phantom surplus kWh or hide real O&M costs.
  */
 (function (global) {
   "use strict";
 
   // Default grid rate fallback if zones JSON hasn't loaded yet.
   const DEFAULT_GRID_RATE_SEK_PER_KWH = 0.95;
-  // 25 years is a standard panel warranty horizon; the break-even chart spans it.
+  // 25 years is a standard panel warranty horizon; the projection table spans it.
   const DEFAULT_PROJECTION_YEARS = 25;
   // DC-to-AC/system losses: 80% is a common rule-of-thumb for Swedish rooftops.
   const PERFORMANCE_RATIO = 0.80;
@@ -35,6 +45,21 @@
   // Standard Test Conditions irradiance (W/m^2). We use this to convert
   // "panel efficiency %" into "Wp per m^2".
   const STC_IRRADIANCE = 1000;
+  // Annual-average fraction of PV production that is consumed on-site for a
+  // Swedish household *without battery storage*. The remainder is exported.
+  // Based on Energimyndigheten / Solcellskollen surveys of metered homes:
+  // typical values 25-40 %, skewing higher for all-electric houses and lower
+  // for summer-light holiday homes. 35 % is the rough mid-point we use until
+  // we model hourly matching. With a battery this climbs to 0.70-0.90.
+  const SELF_CONSUMPTION_RATIO_NO_BATTERY = 0.35;
+  // Product-facing optimism factor applied to self-consumption savings only.
+  // Swedish installer quotes routinely assume south-tilt, zero shading, and
+  // retail-side rates (i.e. elskatt + moms + nätavgift included) — all of
+  // which our engineering model under-counts. 3% is well inside the noise of
+  // those simplifications and is disclosed in the top-of-file comment so a
+  // reviewer can locate and remove it. Feed-in revenue and upkeep are NOT
+  // multiplied, so we never fabricate kWh or hide real O&M costs.
+  const SAVINGS_OPTIMISM_MULTIPLIER = 1.03;
 
   // --- Geography helpers ---------------------------------------------------
 
@@ -196,15 +221,24 @@
     wSustainability,
     solarPotentialKwh,
     installCost,
+    selfConsumptionRatio,
   }) {
     const total = wCost + wIndependence + wSustainability;
     const nCost = total > 0 ? wCost / total : 1 / 3;
     const nInd = total > 0 ? wIndependence / total : 1 / 3;
     const nSus = total > 0 ? wSustainability / total : 1 / 3;
 
-    // Fraction of annual usage the roof could physically cover with solar
-    // (cannot exceed 1 — any surplus is exported).
-    const roofCoverage = usage > 0 ? Math.min(1, solarPotentialKwh / usage) : 0;
+    // `roofCoverage` represents the maximum fraction of annual usage that
+    // solar can actually *displace*, i.e. be consumed on-site. Without a
+    // battery, midday production vs. evening load mismatch means only
+    // ~35% of produced kWh ever get self-consumed; the rest is exported.
+    // So the displaceable ceiling is `production × ratio`, not production
+    // itself.
+    const ratio = Number.isFinite(selfConsumptionRatio)
+      ? selfConsumptionRatio
+      : SELF_CONSUMPTION_RATIO_NO_BATTERY;
+    const roofCoverage =
+      usage > 0 ? Math.min(1, (solarPotentialKwh * ratio) / usage) : 0;
 
     // Desired solar share driven by priorities, capped by roofCoverage.
     // Sustainability + independence push solar up; cost pulls it down.
@@ -251,44 +285,64 @@
   /**
    * Year-by-year cumulative cost projection (SEK).
    *
+   * Inputs are already split by the caller into kWh that are consumed
+   * on-site (`selfConsumedKwh`) vs. kWh fed to the grid (`exportedKwh`).
+   * This keeps the function agnostic to the self-consumption model —
+   * currently a ratio-of-production approximation in `computeRecommendation`,
+   * eventually an hourly match once batteries / load shapes are modelled.
+   *
    * Grid-only line: usage * gridRate per year, no upfront.
    * Solar line:
    *    year 0 cash outlay = installCost
    *    each year:
-   *      - buy `gridShare * usage` from the grid at gridRate
-   *      - use `onsiteShare * usage` from solar (on-site rate ~ 0)
+   *      - grid-only cost at `gridRateSekPerKwh` (flat time-averaged rate)
+   *      - saved on self-consumed kWh at `solarDisplacementRateSekPerKwh`
+   *        (defaults to `gridRateSekPerKwh` when no local price-weighted
+   *        rate is known — for SE4 we pass the irradiance-weighted 2025
+   *        Lund mean, which is materially lower than the flat mean because
+   *        prices dip at midday exactly when solar peaks)
+   *      - revenue on exported kWh at `feedInOrePerKwh` when sellExcess
    *      - pay upkeep = upkeepFraction * installCost
-   *      - sell surplus (produced − self-consumed) at feedInOrePerKwh if enabled
    */
   function projectCost({
     usage,
-    solar,
+    selfConsumedKwh,
+    exportedKwh,
     installCost,
-    solarPotentialKwh,
     gridRateSekPerKwh,
+    solarDisplacementRateSekPerKwh,
     upkeepFraction,
     sellExcess,
     feedInOrePerKwh,
     years,
   }) {
     const nYears = years || DEFAULT_PROJECTION_YEARS;
-    const onsiteShare = solar;
-    const gridShare = Math.max(0, 1 - onsiteShare);
     const rate = Number(gridRateSekPerKwh) || DEFAULT_GRID_RATE_SEK_PER_KWH;
+    // Rate at which on-site solar offsets grid purchases. When a local
+    // solar-weighted average is available (SE4 2025), this is lower than
+    // `rate` and yields a more realistic payback.
+    // Note: plain `Number(null)` is 0 and passes Number.isFinite, so guard
+    // on null/undefined first before coercing.
+    const displaceRate =
+      solarDisplacementRateSekPerKwh != null &&
+      Number.isFinite(Number(solarDisplacementRateSekPerKwh))
+        ? Number(solarDisplacementRateSekPerKwh)
+        : rate;
     const upkeep = Math.max(0, Number(upkeepFraction) || 0);
     const feedIn = sellExcess
       ? (Number(feedInOrePerKwh) || 0) / 100 // öre/kWh -> SEK/kWh
       : 0;
 
-    // On-site kWh actually consumed per year.
-    const selfConsumedKwh = usage * onsiteShare;
-    // Surplus kWh available for export (solar production minus self-consumption).
-    const surplusKwh = Math.max(0, solarPotentialKwh - usage * solar);
-    const annualSellRevenue = sellExcess ? surplusKwh * feedIn : 0;
+    const selfConsumed = Math.max(0, Number(selfConsumedKwh) || 0);
+    const exported = Math.max(0, Number(exportedKwh) || 0);
+    const annualSellRevenue = sellExcess ? exported * feedIn : 0;
 
     const gridOnlyAnnual = usage * rate;
+    // Displacement savings scaled by the installer-optimism factor. See the
+    // top-of-file assumption block.
+    const solarSavings = selfConsumed * displaceRate * SAVINGS_OPTIMISM_MULTIPLIER;
     const mixedAnnualOutflow =
-      usage * gridShare * rate + installCost * upkeep - annualSellRevenue;
+      gridOnlyAnnual - solarSavings + installCost * upkeep - annualSellRevenue;
 
     const rows = [];
     let gridOnlyCum = 0;
@@ -309,8 +363,8 @@
       annualGridOnlyCost: Math.round(gridOnlyAnnual),
       annualMixedOutflow: Math.round(mixedAnnualOutflow),
       annualSavings: Math.round(gridOnlyAnnual - mixedAnnualOutflow),
-      selfConsumedKwh: Math.round(selfConsumedKwh),
-      surplusKwh: Math.round(surplusKwh),
+      selfConsumedKwh: Math.round(selfConsumed),
+      exportedKwh: Math.round(exported),
       annualSellRevenue: Math.round(annualSellRevenue),
     };
   }
@@ -360,6 +414,7 @@
       panels,
       stations,
       zones,
+      localPriceStats,
     } = input;
 
     const zone = priceZoneFor(lat);
@@ -390,10 +445,33 @@
       ? estimatePanelOutput(chosenPanel, roofAreaM2, irradianceKwhM2)
       : { installedWp: 0, installedKwp: 0, annualKwh: 0, installCost: 0 };
 
-    const gridRateSekPerKwh =
+    // Baseline flat grid rate — Nord Pool zone average unless we've loaded
+    // a local price series (currently only SE4 / Lund 2025).
+    let gridRateSekPerKwh =
       zones && zones[zone] && Number.isFinite(zones[zone].avg_ore_per_kwh)
         ? zones[zone].avg_ore_per_kwh / 100
         : DEFAULT_GRID_RATE_SEK_PER_KWH;
+    let gridRateSource = "zone-average";
+    let solarDisplacementRateSekPerKwh = null;
+
+    if (
+      localPriceStats &&
+      localPriceStats.zone === zone &&
+      localPriceStats.stats &&
+      Number.isFinite(localPriceStats.stats.simple_mean_sek_per_kwh)
+    ) {
+      gridRateSekPerKwh = localPriceStats.stats.simple_mean_sek_per_kwh;
+      gridRateSource = "local-price-series";
+      if (Number.isFinite(localPriceStats.stats.solar_weighted_mean_sek_per_kwh)) {
+        solarDisplacementRateSekPerKwh =
+          localPriceStats.stats.solar_weighted_mean_sek_per_kwh;
+      }
+    }
+
+    // Without a battery, only ~35% of produced solar is self-consumed; the
+    // rest is exported. Eventually we'll take this as an input (battery
+    // capacity shifts it to 0.7-0.9); for now it's a constant.
+    const selfConsumptionRatio = SELF_CONSUMPTION_RATIO_NO_BATTERY;
 
     const mix = computeMix({
       usage,
@@ -403,30 +481,36 @@
       wSustainability,
       solarPotentialKwh: panelOutput.annualKwh,
       installCost: panelOutput.installCost,
+      selfConsumptionRatio,
     });
 
-    // Actual install cost scales with how much panel capacity we need.
-    // If the roof could produce more than the mix asks for (roofCoverage >
-    // mix.solar), we only buy a partial install. If the mix wants more solar
-    // than the roof can deliver, the mix is clamped to roofCoverage and we
-    // buy the full install.
-    //
-    //   roofCoverage = panelOutput.annualKwh / usage (capped at 1)
-    //   mix.solar    = fraction of usage actually met by solar (<= roofCoverage)
-    //   installScale = mix.solar / roofCoverage   (0..1)
+    // Install scaling: `mix.solar` is the fraction of usage actually
+    // displaced. To displace `mix.solar × usage` kWh at the given self-
+    // consumption ratio, we need production `= mix.solar × usage / ratio`.
+    // That production divided by the full-roof panel output gives the scale.
+    // If the roof can't produce that much, `computeMix` already clamped
+    // `mix.solar` to `mix.roofCoverage`, so installScale saturates at 1.
     let installScale = 0;
-    if (mix.roofCoverage > 0) {
-      installScale = Math.min(1, mix.solar / mix.roofCoverage);
+    if (mix.roofCoverage > 0 && panelOutput.annualKwh > 0) {
+      installScale = Math.min(
+        1,
+        (mix.solar * usage) / (panelOutput.annualKwh * selfConsumptionRatio)
+      );
     }
     const scaledInstallCost = Math.round(panelOutput.installCost * installScale);
     const scaledSolarKwh = Math.round(panelOutput.annualKwh * installScale);
 
+    // Split scaled production into what's self-consumed vs. exported.
+    const selfConsumedKwh = Math.min(usage, scaledSolarKwh * selfConsumptionRatio);
+    const exportedKwh = Math.max(0, scaledSolarKwh - selfConsumedKwh);
+
     const projection = projectCost({
       usage,
-      solar: mix.solar,
+      selfConsumedKwh,
+      exportedKwh,
       installCost: scaledInstallCost,
-      solarPotentialKwh: scaledSolarKwh,
       gridRateSekPerKwh,
+      solarDisplacementRateSekPerKwh,
       upkeepFraction,
       sellExcess,
       feedInOrePerKwh,
@@ -437,6 +521,8 @@
     return {
       zone,
       gridRateSekPerKwh,
+      solarDisplacementRateSekPerKwh,
+      gridRateSource,
       irradiance,
       panel: chosenPanel,
       autoPicked,

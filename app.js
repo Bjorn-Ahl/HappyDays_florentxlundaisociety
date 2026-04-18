@@ -39,9 +39,11 @@
   const zoneDetail = document.getElementById("zone-detail");
   const panelSummary = document.getElementById("panel-summary");
   const irradianceSummary = document.getElementById("irradiance-summary");
+  const flowSummary = document.getElementById("flow-summary");
 
   const paybackValue = document.getElementById("payback-value");
   const paybackLabel = document.getElementById("payback-label");
+  const paybackSavings = document.getElementById("payback-savings");
 
   const segSolar = document.getElementById("seg-solar");
   const segGrid = document.getElementById("seg-grid");
@@ -51,7 +53,6 @@
   const independenceValue = document.getElementById("independence-value");
   const independenceLabel = document.getElementById("independence-label");
 
-  const breakEvenChart = document.getElementById("break-even-chart");
   const costTableBody = document.querySelector("#cost-table tbody");
 
   // ---- Async-loaded reference data ---------------------------------------
@@ -59,6 +60,7 @@
   let irradianceStations = [];      // from data/smhi_irradiance.json
   let irradianceMeta = { source: null, generatedAt: null };
   let electricityZones = null;      // from data/electricity_zones.json
+  let localPriceStats = null;       // from data/lund_price_stats.json (SE4 only)
 
   // ---- Populate form UI --------------------------------------------------
 
@@ -160,6 +162,20 @@
     } catch (e) {
       console.warn("[HappyDays] zones JSON not loadable; using default grid rate.", e);
     }
+    try {
+      const res = await fetch("data/lund_price_stats.json", { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.stats && typeof json.zone === "string") {
+          localPriceStats = json;
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "[HappyDays] local price-stats JSON not loadable; falling back to zone average.",
+        e
+      );
+    }
   }
 
   // ---- Live output bindings ---------------------------------------------
@@ -213,7 +229,6 @@
   // ---- Rendering --------------------------------------------------------
 
   const fmtSek = new Intl.NumberFormat("sv-SE");
-  const fmtCompact = new Intl.NumberFormat("sv-SE", { notation: "compact" });
 
   function renderSummary(rec) {
     const zoneInfo =
@@ -221,9 +236,22 @@
         ? electricityZones[rec.zone]
         : null;
     zoneChip.textContent = rec.zone;
-    zoneDetail.textContent = zoneInfo
-      ? `${zoneInfo.name} · ~${zoneInfo.avg_ore_per_kwh} öre/kWh avg`
-      : `grid rate ${(rec.gridRateSekPerKwh).toFixed(2)} SEK/kWh`;
+    const zoneName = zoneInfo ? zoneInfo.name : null;
+    if (rec.gridRateSource === "local-price-series") {
+      const flatOre = Math.round(rec.gridRateSekPerKwh * 100);
+      const dispOre =
+        rec.solarDisplacementRateSekPerKwh != null
+          ? Math.round(rec.solarDisplacementRateSekPerKwh * 100)
+          : flatOre;
+      const prefix = zoneName ? `${zoneName} · ` : "";
+      zoneDetail.textContent =
+        `${prefix}${flatOre} öre/kWh flat, ${dispOre} öre/kWh solar-weighted ` +
+        `(2025 Lund hourly)`;
+    } else if (zoneInfo) {
+      zoneDetail.textContent = `${zoneInfo.name} · ~${zoneInfo.avg_ore_per_kwh} öre/kWh avg`;
+    } else {
+      zoneDetail.textContent = `grid rate ${(rec.gridRateSekPerKwh).toFixed(2)} SEK/kWh`;
+    }
 
     if (rec.panel) {
       const e = rec.panelOutput;
@@ -245,21 +273,75 @@
       irradianceSummary.textContent = `${ir.annualKwhPerM2} kWh/m²/yr · ${sourceTag}`;
     }
     irradianceSummary.classList.toggle("fallback-warning", isFallback);
+
+    if (flowSummary) {
+      const p = rec.projection || {};
+      const self = p.selfConsumedKwh ?? 0;
+      const exp = p.exportedKwh ?? 0;
+      const rev = p.annualSellRevenue ?? 0;
+      const total = self + exp;
+      if (total > 0) {
+        const selfPct = Math.round((self / total) * 100);
+        const expPct = Math.max(0, 100 - selfPct);
+        const revStr = rev > 0
+          ? ` · ${fmtSek.format(rev)} SEK/yr feed-in revenue`
+          : " · not sold to grid";
+        flowSummary.textContent =
+          `${fmtSek.format(total)} kWh/yr produced — ` +
+          `${fmtSek.format(self)} self-consumed (${selfPct}%), ` +
+          `${fmtSek.format(exp)} exported (${expPct}%)${revStr}`;
+      } else {
+        flowSummary.textContent = "—";
+      }
+    }
   }
 
   function renderPayback(rec) {
+    const annualSavings =
+      rec.projection && Number.isFinite(rec.projection.annualSavings)
+        ? rec.projection.annualSavings
+        : null;
+
     if (rec.paybackYears == null) {
       paybackValue.classList.add("no-payback");
       paybackValue.innerHTML =
         "Doesn't pay back within 25 years<span class='unit'></span>";
       paybackLabel.textContent =
         "With these inputs, cumulative savings never catch up to the install cost.";
+
+      if (annualSavings == null) {
+        paybackSavings.hidden = true;
+        paybackSavings.textContent = "";
+      } else if (annualSavings >= 0) {
+        paybackSavings.hidden = false;
+        paybackSavings.classList.remove("is-negative");
+        paybackSavings.textContent = `Net savings: ${fmtSek.format(
+          annualSavings
+        )} SEK/year over the install cost`;
+      } else {
+        paybackSavings.hidden = false;
+        paybackSavings.classList.add("is-negative");
+        paybackSavings.textContent = `Net loss: ${fmtSek.format(
+          Math.abs(annualSavings)
+        )} SEK/year with these inputs`;
+      }
     } else {
       paybackValue.classList.remove("no-payback");
       paybackValue.innerHTML = `${rec.paybackYears}<span class="unit">years</span>`;
       paybackLabel.textContent = `years until cumulative savings equal the ${fmtSek.format(
         rec.installCost
       )} SEK install cost`;
+
+      if (annualSavings == null) {
+        paybackSavings.hidden = true;
+        paybackSavings.textContent = "";
+      } else {
+        paybackSavings.hidden = false;
+        paybackSavings.classList.remove("is-negative");
+        paybackSavings.textContent = `~${fmtSek.format(
+          annualSavings
+        )} SEK/year in average savings`;
+      }
     }
   }
 
@@ -293,7 +375,7 @@
   }
 
   function renderTable(rows) {
-    // Show years 1–10 in the table even though the chart goes to 25.
+    // Show years 1–10 in the table (projection spans 25 years).
     const first10 = rows.filter((r) => r.year >= 1 && r.year <= 10);
     costTableBody.innerHTML = first10
       .map(
@@ -303,130 +385,6 @@
           )}</td></tr>`
       )
       .join("");
-  }
-
-  function niceCeil(n) {
-    if (n <= 0) return 1;
-    const pow = Math.pow(10, Math.floor(Math.log10(n)));
-    const base = n / pow;
-    let nice;
-    if (base <= 1) nice = 1;
-    else if (base <= 2) nice = 2;
-    else if (base <= 2.5) nice = 2.5;
-    else if (base <= 5) nice = 5;
-    else nice = 10;
-    return nice * pow;
-  }
-
-  function renderBreakEvenChart(rows, paybackYears) {
-    const W = 600;
-    const H = 280;
-    const padL = 60;
-    const padR = 20;
-    const padT = 20;
-    const padB = 40;
-    const innerW = W - padL - padR;
-    const innerH = H - padT - padB;
-
-    const maxY = Math.max(
-      ...rows.map((r) => Math.max(r.gridOnly, r.mixed)),
-      1
-    );
-    const niceMax = niceCeil(maxY);
-    const lastYear = rows[rows.length - 1].year;
-
-    const xAt = (year) => padL + (innerW * year) / Math.max(1, lastYear);
-    const yAt = (v) => padT + innerH - (v / niceMax) * innerH;
-
-    const toPath = (key) =>
-      rows
-        .map(
-          (r, i) =>
-            `${i === 0 ? "M" : "L"}${xAt(r.year).toFixed(1)},${yAt(r[key]).toFixed(1)}`
-        )
-        .join(" ");
-
-    const gridPath = toPath("gridOnly");
-    const mixedPath = toPath("mixed");
-
-    // Ticks
-    const yTicks = [0, niceMax / 4, niceMax / 2, (3 * niceMax) / 4, niceMax];
-    const tickLines = yTicks
-      .map(
-        (t) =>
-          `<line x1="${padL}" y1="${yAt(t).toFixed(
-            1
-          )}" x2="${W - padR}" y2="${yAt(t).toFixed(
-            1
-          )}" stroke="#e3ebe8" stroke-width="1" />`
-      )
-      .join("");
-    const tickLabels = yTicks
-      .map(
-        (t) =>
-          `<text x="${padL - 8}" y="${(yAt(t) + 4).toFixed(
-            1
-          )}" text-anchor="end" font-size="11" fill="#5a6b70">${fmtCompact.format(
-            Math.round(t)
-          )}</text>`
-      )
-      .join("");
-
-    const xTicksEvery = 5;
-    const xLabels = [];
-    for (let y = 0; y <= lastYear; y += xTicksEvery) {
-      xLabels.push(
-        `<text x="${xAt(y).toFixed(1)}" y="${
-          H - padB + 18
-        }" text-anchor="middle" font-size="11" fill="#5a6b70">Y${y}</text>`
-      );
-    }
-
-    // Crossover marker
-    let crossoverMarker = "";
-    if (paybackYears != null && paybackYears <= lastYear) {
-      // Linearly interpolate the mixed-line Y at the crossover year.
-      const prev = rows[Math.floor(paybackYears)];
-      const next = rows[Math.ceil(paybackYears)] || prev;
-      const t = paybackYears - Math.floor(paybackYears);
-      const crossY = prev.gridOnly + t * (next.gridOnly - prev.gridOnly);
-      const cx = xAt(paybackYears);
-      const cy = yAt(crossY);
-      crossoverMarker = `
-        <line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(
-        1
-      )}" y2="${H - padB}" stroke="#2f6b53" stroke-width="1" stroke-dasharray="4 3" />
-        <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(
-        1
-      )}" r="6" fill="#fff" stroke="#2f6b53" stroke-width="2.5" />
-        <text x="${(cx + 8).toFixed(
-          1
-        )}" y="${(cy - 10).toFixed(
-        1
-      )}" font-size="12" font-weight="600" fill="#2f6b53">Break even · ${paybackYears}y</text>
-      `;
-    }
-
-    const legend = `
-      <g transform="translate(${padL + 8}, ${padT + 6})">
-        <rect width="180" height="44" fill="#ffffff" fill-opacity="0.9" rx="6" stroke="#e3ebe8" />
-        <line x1="10" y1="16" x2="34" y2="16" stroke="#9aa6a9" stroke-width="3" />
-        <text x="42" y="20" font-size="12" fill="#1b2a2e">Grid only</text>
-        <line x1="10" y1="34" x2="34" y2="34" stroke="#2f6b53" stroke-width="3" />
-        <text x="42" y="38" font-size="12" fill="#1b2a2e">Solar investment</text>
-      </g>`;
-
-    breakEvenChart.innerHTML = `
-      ${tickLines}
-      ${tickLabels}
-      ${xLabels.join("")}
-      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="#c9d3d0" stroke-width="1" />
-      <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="#c9d3d0" stroke-width="1" />
-      <path d="${gridPath}" fill="none" stroke="#9aa6a9" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
-      <path d="${mixedPath}" fill="none" stroke="#2f6b53" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
-      ${crossoverMarker}
-      ${legend}
-    `;
   }
 
   // ---- Submit handler ---------------------------------------------------
@@ -478,6 +436,7 @@
       panels: window.PANEL_TYPES,
       stations: irradianceStations,
       zones: electricityZones,
+      localPriceStats,
     });
 
     resultsLead.textContent = `Based on ${fmtSek.format(
@@ -489,7 +448,6 @@
     renderMix(rec.mix);
     renderMetrics(rec.mix);
     renderTable(rec.projection.rows);
-    renderBreakEvenChart(rec.projection.rows, rec.paybackYears);
 
     results.hidden = false;
     results.setAttribute("tabindex", "-1");
@@ -518,6 +476,8 @@
     const recSnapshot = {
       zone: rec.zone,
       gridRateSekPerKwh: rec.gridRateSekPerKwh,
+      solarDisplacementRateSekPerKwh: rec.solarDisplacementRateSekPerKwh,
+      gridRateSource: rec.gridRateSource,
       panel: rec.panel ? { id: rec.panel.id, label: rec.panel.label } : null,
       autoPicked: rec.autoPicked,
       installCost: rec.installCost,
@@ -531,6 +491,9 @@
       },
       paybackYears: rec.paybackYears,
       annualSavings: rec.projection ? rec.projection.annualSavings : null,
+      selfConsumedKwh: rec.projection ? rec.projection.selfConsumedKwh : null,
+      exportedKwh: rec.projection ? rec.projection.exportedKwh : null,
+      annualSellRevenue: rec.projection ? rec.projection.annualSellRevenue : null,
     };
     if (window.HappyDaysAdviser) {
       window.HappyDaysAdviser.updateContext(recSnapshot, formSnapshot);
