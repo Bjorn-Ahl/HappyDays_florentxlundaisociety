@@ -1,25 +1,19 @@
 {
-  "generated_at": "2026-04-18T17:57:42+02:00",
+  "generated_at": "2026-04-18T18:09:42+02:00",
   "source": "elprisetjustnu.se day-ahead, hourly means from 15-min slots",
   "zones": {
     "SE1": {
       "zone": "SE1",
-      "generated_at": "2026-04-18T17:57:42+02:00",
+      "generated_at": "2026-04-18T18:09:42+02:00",
       "stale": false,
       "source": "elprisetjustnu.se day-ahead, hourly means from 15-min slots",
       "current": {
-        "hour_start": "2026-04-18T17:00:00+02:00",
-        "price_ore": 51.84,
+        "hour_start": "2026-04-18T18:00:00+02:00",
+        "price_ore": 44.12,
         "tier": "red",
         "color_hex": "#ff3c30"
       },
       "next_12h": [
-        {
-          "hour_start": "2026-04-18T17:00:00+02:00",
-          "price_ore": 51.84,
-          "tier": "red",
-          "color_hex": "#ff3c30"
-        },
         {
           "hour_start": "2026-04-18T18:00:00+02:00",
           "price_ore": 44.12,
@@ -85,12 +79,18 @@
           "price_ore": 27.58,
           "tier": "yellow",
           "color_hex": "#ffc800"
+        },
+        {
+          "hour_start": "2026-04-19T05:00:00+02:00",
+          "price_ore": 29.02,
+          "tier": "red",
+          "color_hex": "#ff3c30"
         }
       ],
       "window_stats": {
         "min_ore": 9.08,
         "max_ore": 52.54,
-        "mean_ore": 27.46,
+        "mean_ore": 25.56,
         "n_hours": 12,
         "tier_low_cutoff_ore": 13.0,
         "tier_high_cutoff_ore": 27.58
@@ -98,22 +98,16 @@
     },
     "SE2": {
       "zone": "SE2",
-      "generated_at": "2026-04-18T17:57:42+02:00",
+      "generated_at": "2026-04-18T18:09:42+02:00",
       "stale": false,
       "source": "elprisetjustnu.se day-ahead, hourly means from 15-min slots",
       "current": {
-        "hour_start": "2026-04-18T17:00:00+02:00",
-        "price_ore": 52.6,
+        "hour_start": "2026-04-18T18:00:00+02:00",
+        "price_ore": 48.88,
         "tier": "red",
         "color_hex": "#ff3c30"
       },
       "next_12h": [
-        {
-          "hour_start": "2026-04-18T17:00:00+02:00",
-          "price_ore": 52.6,
-          "tier": "red",
-          "color_hex": "#ff3c30"
-        },
         {
           "hour_start": "2026-04-18T18:00:00+02:00",
           "price_ore": 48.88,
@@ -179,12 +173,18 @@
           "price_ore": 32.29,
           "tier": "yellow",
           "color_hex": "#ffc800"
+        },
+        {
+          "hour_start": "2026-04-19T05:00:00+02:00",
+          "price_ore": 33.82,
+          "tier": "red",
+          "color_hex": "#ff3c30"
         }
       ],
       "window_stats": {
         "min_ore": 16.53,
-        "max_ore": 52.6,
-        "mean_ore": 32.61,
+        "max_ore": 52.04,
+        "mean_ore": 31.04,
         "n_hours": 12,
         "tier_low_cutoff_ore": 19.53,
         "tier_high_cutoff_ore": 32.29
@@ -192,22 +192,16 @@
     },
     "SE3": {
       "zone": "SE3",
-      "generated_at": "2026-04-18T17:57:42+02:00",
+      "generated_at": "2026-04-18T18:09:42+02:00",
       "stale": false,
       "source": "elprisetjustnu.se day-ahead, hourly means from 15-min slots",
       "current": {
-        "hour_start": "2026-04-18T17:00:00+02:00",
-        "price_ore": 65.91,
-        "tier": "yellow",
-        "color_hex": "#ffc800"
+        "hour_start": "2026-04-18T18:00:00+02:00",
+        "price_ore": 67.83,
+        "tier": "red",
+        "color_hex": "#ff3c30"
       },
       "next_12h": [
-        {
-          "hour_start": "2026-04-18T17:00:00+02:00",
-          "price_ore": 65.91,
-          "tier": "yellow",
-          "color_hex": "#ffc800"
-        },
         {
           "hour_start": "2026-04-18T18:00:00+02:00",
           "price_ore": 67.83,
@@ -273,35 +267,35 @@
           "price_ore": 52.72,
           "tier": "yellow",
           "color_hex": "#ffc800"
+        },
+        {
+          "hour_start": "2026-04-19T05:00:00+02:00",
+          "price_ore": 54.09,
+          "tier": "yellow",
+          "color_hex": "#ffc800"
         }
       ],
       "window_stats": {
         "min_ore": 41.68,
         "max_ore": 80.88,
-        "mean_ore": 57.49,
+        "mean_ore": 56.5,
         "n_hours": 12,
         "tier_low_cutoff_ore": 46.66,
-        "tier_high_cutoff_ore": 65.91
+        "tier_high_cutoff_ore": 55.82
       }
     },
     "SE4": {
       "zone": "SE4",
-      "generated_at": "2026-04-18T17:57:42+02:00",
+      "generated_at": "2026-04-18T18:09:42+02:00",
       "stale": false,
       "source": "elprisetjustnu.se day-ahead, hourly means from 15-min slots",
       "current": {
-        "hour_start": "2026-04-18T17:00:00+02:00",
-        "price_ore": 71.41,
-        "tier": "yellow",
-        "color_hex": "#ffc800"
+        "hour_start": "2026-04-18T18:00:00+02:00",
+        "price_ore": 75.95,
+        "tier": "red",
+        "color_hex": "#ff3c30"
       },
       "next_12h": [
-        {
-          "hour_start": "2026-04-18T17:00:00+02:00",
-          "price_ore": 71.41,
-          "tier": "yellow",
-          "color_hex": "#ffc800"
-        },
         {
           "hour_start": "2026-04-18T18:00:00+02:00",
           "price_ore": 75.95,
@@ -367,15 +361,21 @@
           "price_ore": 60.57,
           "tier": "yellow",
           "color_hex": "#ffc800"
+        },
+        {
+          "hour_start": "2026-04-19T05:00:00+02:00",
+          "price_ore": 61.96,
+          "tier": "yellow",
+          "color_hex": "#ffc800"
         }
       ],
       "window_stats": {
         "min_ore": 51.8,
         "max_ore": 105.41,
-        "mean_ore": 70.53,
+        "mean_ore": 69.75,
         "n_hours": 12,
         "tier_low_cutoff_ore": 58.36,
-        "tier_high_cutoff_ore": 71.41
+        "tier_high_cutoff_ore": 66.27
       }
     }
   }
