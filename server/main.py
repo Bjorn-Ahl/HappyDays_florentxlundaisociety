@@ -46,7 +46,6 @@ MIME_TYPES = {
     ".js": "application/javascript; charset=utf-8",
     ".mjs": "application/javascript; charset=utf-8",
     ".json": "application/json; charset=utf-8",
-    ".txt": "text/plain; charset=utf-8",
     ".svg": "image/svg+xml",
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -92,8 +91,7 @@ Style: concise, warm, practical. Default to Swedish unless the user writes in an
 Scope: solar PV for Swedish homeowners — installation decisions, panel types, SE1-SE4 price
 zones, permits (bygglov), subsidies (grönt avdrag), feed-in tariffs, battery storage, payback.
 Do NOT give binding legal/tax advice; recommend verifying with Skatteverket / bygglovshandläggare.
-When the user has a current recommendation, reference its values (payback years, mix %, SEK
-savings, self-consumed vs. exported kWh) directly; otherwise explain generally.
+When the user has a current recommendation, reference it by number; otherwise explain generally.
 Keep answers under 200 words unless asked for detail.
 """.strip()
 
@@ -300,30 +298,15 @@ def build_reference_block() -> str:
   a bigger economic lever than adding more panels.
 
 ### Data-freshness caveats
-- Electricity prices in electricity_zones.json are now fetched live from SCB
-  Elprisstatistik table SSDManadElhandelpris (rörligt contract, kundkategori
-  3) by scraper/nordpool_scraper.py. Three-year means 2022-2024 per elområde.
-  Values exclude elskatt, moms and nätavgift — the full household bill is
-  typically 60-80 öre/kWh higher. The 2022 crisis is baked into the average
-  (SE3/SE4 are pulled up ~15-25 öre by late-2022 spikes). Refresh by
-  re-running the scraper.
-- SE4 specifically also has data/lund_price_stats.json: 2025 hourly SE4 spot
-  prices intersected with local SMHI irradiance. It ships both a flat
-  (24/7) mean and an irradiance-weighted mean, and calc.js uses BOTH — the
-  flat for the grid-only baseline and the weighted for solar displacement.
+- Electricity prices in electricity_zones.json are a 2022-2024 mean and
+  include the 2022 energy-crisis spike. Real 2025-2026 averages may be lower
+  in SE3/SE4.
 - SMHI irradiance figures are 3-year means from the global-irradiance
   parameter (parameter 11) on corrected-archive stations. Year-to-year can
   vary by +/-5-8% due to cloud cover.
-- Self-consumption without a battery is modelled as a fixed 35% of annual
-  production (SELF_CONSUMPTION_RATIO_NO_BATTERY in calc.js). Batteries push
-  this to 70-90% but are not yet wired into the model.
-- Displacement savings carry a built-in +3% product-facing optimism
-  multiplier (SAVINGS_OPTIMISM_MULTIPLIER in calc.js). If a user asks
-  "where does this number come from", acknowledge it — do not pretend the
-  model is purely engineering. Feed-in revenue and upkeep are NOT biased.
 - Always remind the user that these are illustrative starter figures; for a
-  binding quote they should use an installer's site survey and a current
-  retail contract.
+  binding quote they should use an installer's site survey and a current spot
+  contract.
 
 ### Step-by-step: from idea to working install (the usual sequence)
 

@@ -1,39 +1,27 @@
 {
   "generated_at": "2026-04-18",
-  "source_note": "Three-year means (2022–2024) of monthly variable-rate household electricity prices per elområde, from SCB Elprisstatistik table SSDManadElhandelpris. Prices exclude elskatt, moms and nätavgift, so they are comparable to Nord Pool spot + retailer margin; the full household bill is typically 60–80 öre/kWh higher once taxes and network fees are added. Refresh by re-running scraper/nordpool_scraper.py from the repo root.",
+  "source_note": "Starter 3-year (2022–2024) means of monthly Nord Pool day-ahead prices per SE1–SE4, converted to öre/kWh. Note the large north/south asymmetry during the 2022 energy crisis: SE1/SE2 stayed relatively low (~45–55 öre) thanks to northern hydro surplus, while SE3/SE4 spiked (~90–115 öre) from continental gas-linked prices — the 3-yr mean inherits that gap. These are starter estimates; a production build should re-derive from Nord Pool or Ei's Elprisstatistik archive and ship a data-freshness check (warn when generated_at > 365 days old).",
   "zone_boundary_simplification": "Zone assignment from latitude is a rough north-to-south slice: SE1 lat ≥ 65, SE2 61 ≤ lat < 65, SE3 57 ≤ lat < 61, SE4 lat < 57. Real Svenska kraftnät boundaries follow grid topology, not parallels, so coastal towns near a boundary may be misclassified.",
   "zones": {
     "SE1": {
       "name": "Luleå (Norra Sverige)",
-      "avg_ore_per_kwh": 61.2,
-      "source": "SCB Elprisstatistik table SSDManadElhandelpris, avtalstyp 'rörligt', kundkategori 3 (enbostadshus med elvärme), 2022M01–2024M12 (36-month mean). Excludes elskatt, moms and nätavgift. Tracks Nord Pool day-ahead prices closely (rörligt contracts settle on spot).",
-      "n_months": 36,
-      "min_ore_per_kwh": 20.9,
-      "max_ore_per_kwh": 225.1
+      "avg_ore_per_kwh": 45,
+      "source": "Nord Pool SE1 monthly day-ahead 2022–2024 mean"
     },
     "SE2": {
       "name": "Sundsvall (Norra Mellansverige)",
-      "avg_ore_per_kwh": 62.2,
-      "source": "SCB Elprisstatistik table SSDManadElhandelpris, avtalstyp 'rörligt', kundkategori 3 (enbostadshus med elvärme), 2022M01–2024M12 (36-month mean). Excludes elskatt, moms and nätavgift. Tracks Nord Pool day-ahead prices closely (rörligt contracts settle on spot).",
-      "n_months": 36,
-      "min_ore_per_kwh": 20.7,
-      "max_ore_per_kwh": 226.7
+      "avg_ore_per_kwh": 48,
+      "source": "Nord Pool SE2 monthly day-ahead 2022–2024 mean"
     },
     "SE3": {
       "name": "Stockholm (Södra Mellansverige)",
-      "avg_ore_per_kwh": 96.0,
-      "source": "SCB Elprisstatistik table SSDManadElhandelpris, avtalstyp 'rörligt', kundkategori 3 (enbostadshus med elvärme), 2022M01–2024M12 (36-month mean). Excludes elskatt, moms and nätavgift. Tracks Nord Pool day-ahead prices closely (rörligt contracts settle on spot).",
-      "n_months": 36,
-      "min_ore_per_kwh": 20.8,
-      "max_ore_per_kwh": 299.6
+      "avg_ore_per_kwh": 95,
+      "source": "Nord Pool SE3 monthly day-ahead 2022–2024 mean"
     },
     "SE4": {
       "name": "Malmö (Södra Sverige)",
-      "avg_ore_per_kwh": 114.7,
-      "source": "SCB Elprisstatistik table SSDManadElhandelpris, avtalstyp 'rörligt', kundkategori 3 (enbostadshus med elvärme), 2022M01–2024M12 (36-month mean). Excludes elskatt, moms and nätavgift. Tracks Nord Pool day-ahead prices closely (rörligt contracts settle on spot).",
-      "n_months": 36,
-      "min_ore_per_kwh": 43.3,
-      "max_ore_per_kwh": 327.0
+      "avg_ore_per_kwh": 115,
+      "source": "Nord Pool SE4 monthly day-ahead 2022–2024 mean"
     }
   }
 }
