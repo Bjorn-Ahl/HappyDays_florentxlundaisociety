@@ -910,3 +910,115 @@ tbody tr:last-child td {
     display: none;
   }
 }
+
+/* ==========================================================================
+ * Live prices card (driven by data/nordpool_live.json).
+ * ========================================================================== */
+
+.live-prices-card {
+  /* reuse .card base; this just adds layout */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.live-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.live-header h2 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.25rem;
+}
+
+.live-dot {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #c9d3d0;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.live-dot[data-tier="green"]  { background: #00c850; box-shadow: 0 0 10px rgba(0, 200, 80, 0.55); }
+.live-dot[data-tier="yellow"] { background: #ffc800; box-shadow: 0 0 10px rgba(255, 200, 0, 0.55); }
+.live-dot[data-tier="red"]    { background: #ff3c30; box-shadow: 0 0 10px rgba(255, 60, 48, 0.55); }
+
+.live-current {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.live-price {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.live-hint {
+  font-size: 0.95rem;
+}
+.live-meta {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.live-chart-wrap {
+  width: 100%;
+}
+.live-chart {
+  width: 100%;
+  height: 180px;
+  display: block;
+}
+.live-chart .lp-axis {
+  stroke: #c9d3d0;
+  stroke-width: 1;
+}
+.live-chart .lp-grid {
+  stroke: #e3ebe8;
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.live-chart .lp-line {
+  fill: none;
+  stroke: #5a6b70;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.live-chart .lp-fill {
+  fill: rgba(90, 107, 112, 0.08);
+}
+.live-chart .lp-point {
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+.live-chart .lp-point[data-tier="green"]  { fill: #00c850; }
+.live-chart .lp-point[data-tier="yellow"] { fill: #ffc800; }
+.live-chart .lp-point[data-tier="red"]    { fill: #ff3c30; }
+.live-chart .lp-point.is-current {
+  stroke: var(--ink);
+  stroke-width: 2;
+  r: 6;
+}
+.live-chart text {
+  font-size: 10.5px;
+  fill: #5a6b70;
+}
+
+.live-prices-card.is-stale .live-dot {
+  opacity: 0.5;
+  box-shadow: none;
+}
+.live-prices-card.is-stale .live-price {
+  color: #98a3a6;
+}

@@ -46,6 +46,35 @@
     <!-- Screen-reader live region for result announcements -->
     <div id="live-status" role="status" aria-live="polite" class="sr-only"></div>
 
+    <!-- LIVE PRICES (fed by scraper/nordpool_live.py → data/nordpool_live.json). -->
+    <section class="container" aria-labelledby="lp-title" id="live-prices" hidden>
+      <div class="card live-prices-card">
+        <div class="live-header">
+          <h2 id="lp-title">
+            Right now in <span id="lp-zone">SE4</span>
+            <span class="live-dot" id="lp-dot" data-tier="" aria-hidden="true"></span>
+          </h2>
+          <p class="live-meta muted" id="lp-meta">—</p>
+        </div>
+        <p class="live-current">
+          <span class="live-price" id="lp-price">—</span>
+          <span class="live-hint muted" id="lp-hint"></span>
+        </p>
+        <div class="live-chart-wrap">
+          <svg
+            id="lp-chart"
+            class="live-chart"
+            viewBox="0 0 640 180"
+            role="img"
+            aria-labelledby="lp-chart-title"
+            preserveAspectRatio="none"
+          >
+            <title id="lp-chart-title">Next 12 hours of electricity prices</title>
+          </svg>
+        </div>
+      </div>
+    </section>
+
     <section class="container" aria-labelledby="form-title">
       <div class="card">
         <h2 id="form-title">Your situation</h2>

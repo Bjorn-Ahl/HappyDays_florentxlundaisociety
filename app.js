@@ -824,3 +824,177 @@
   // Initial layout sync.
   syncLayout();
 })();
+
+/* ==========================================================================
+ * Live prices card — polls data/nordpool_live.json (written by
+ * scraper/nordpool_live.py) and paints a traffic-light + 12 h line chart.
+ * Self-hides when the file is missing so the UI stays clean without the
+ * scraper running.
+ * ========================================================================== */
+(function () {
+  "use strict";
+  const FEED_URL = "data/nordpool_live.json";
+  const REFRESH_MS = 60 * 1000;
+
+  const section = document.getElementById("live-prices");
+  if (!section) return;
+  const zoneEl = document.getElementById("lp-zone");
+  const dotEl = document.getElementById("lp-dot");
+  const metaEl = document.getElementById("lp-meta");
+  const priceEl = document.getElementById("lp-price");
+  const hintEl = document.getElementById("lp-hint");
+  const chartEl = document.getElementById("lp-chart");
+
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const fmtOre = new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 1 });
+
+  function el(name, attrs, text) {
+    const n = document.createElementNS(SVGNS, name);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function renderChart(rows, stats, currentHourStart) {
+    while (chartEl.firstChild) chartEl.removeChild(chartEl.firstChild);
+    // Keep the <title> for a11y.
+    chartEl.appendChild(el("title", { id: "lp-chart-title" }, "Next 12 hours of electricity prices"));
+    if (!rows || rows.length === 0) return;
+
+    const W = 640, H = 180;
+    const padL = 40, padR = 12, padT = 14, padB = 28;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+    const prices = rows.map((r) => r.price_ore);
+    const minY = Math.min(...prices, stats && stats.min_ore != null ? stats.min_ore : prices[0]);
+    const maxY = Math.max(...prices, stats && stats.max_ore != null ? stats.max_ore : prices[0]);
+    const span = Math.max(1, maxY - minY);
+    // Pad y-axis a touch so dots don't clip the top/bottom.
+    const niceMin = Math.max(0, minY - span * 0.1);
+    const niceMax = maxY + span * 0.1;
+
+    const xAt = (i) => padL + (innerW * i) / Math.max(1, rows.length - 1);
+    const yAt = (v) => padT + innerH - ((v - niceMin) / (niceMax - niceMin)) * innerH;
+
+    // Horizontal gridlines at 0, 50, 100, 150, 200 öre if in range.
+    const gridVals = [];
+    const step = niceMax - niceMin > 200 ? 100 : 50;
+    for (let v = Math.ceil(niceMin / step) * step; v <= niceMax; v += step) gridVals.push(v);
+    for (const v of gridVals) {
+      chartEl.appendChild(el("line", {
+        class: "lp-grid",
+        x1: padL, x2: W - padR, y1: yAt(v).toFixed(1), y2: yAt(v).toFixed(1),
+      }));
+      chartEl.appendChild(el("text", {
+        x: padL - 6, y: (yAt(v) + 3.5).toFixed(1), "text-anchor": "end",
+      }, String(Math.round(v))));
+    }
+
+    // Axes.
+    chartEl.appendChild(el("line", { class: "lp-axis", x1: padL, x2: padL, y1: padT, y2: H - padB }));
+    chartEl.appendChild(el("line", { class: "lp-axis", x1: padL, x2: W - padR, y1: H - padB, y2: H - padB }));
+
+    // Area fill under the line.
+    const areaPts = rows
+      .map((r, i) => `${xAt(i).toFixed(1)},${yAt(r.price_ore).toFixed(1)}`)
+      .join(" ");
+    chartEl.appendChild(el("polygon", {
+      class: "lp-fill",
+      points: `${padL},${H - padB} ${areaPts} ${W - padR},${H - padB}`,
+    }));
+
+    // Line.
+    const linePath = rows
+      .map((r, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(r.price_ore).toFixed(1)}`)
+      .join(" ");
+    chartEl.appendChild(el("path", { class: "lp-line", d: linePath }));
+
+    // Points (tier-colored), with current hour highlighted.
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const isCurrent = currentHourStart && r.hour_start === currentHourStart;
+      chartEl.appendChild(el("circle", {
+        class: "lp-point" + (isCurrent ? " is-current" : ""),
+        "data-tier": r.tier,
+        cx: xAt(i).toFixed(1),
+        cy: yAt(r.price_ore).toFixed(1),
+        r: 4,
+      }));
+    }
+
+    // X labels every other hour + last.
+    for (let i = 0; i < rows.length; i++) {
+      if (i % 2 !== 0 && i !== rows.length - 1) continue;
+      const hh = new Date(rows[i].hour_start).getHours();
+      chartEl.appendChild(el("text", {
+        x: xAt(i).toFixed(1), y: H - padB + 14, "text-anchor": "middle",
+      }, `${String(hh).padStart(2, "0")}`));
+    }
+  }
+
+  function cheapestAhead(rows) {
+    if (!rows || rows.length < 2) return null;
+    // Skip the current hour; find the cheapest of the remaining.
+    let best = null;
+    for (let i = 1; i < rows.length; i++) {
+      if (!best || rows[i].price_ore < best.price_ore) best = rows[i];
+    }
+    return best;
+  }
+
+  function render(data) {
+    if (!data || !data.next_12h || data.next_12h.length === 0) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    zoneEl.textContent = data.zone || "SE?";
+    const cur = data.current;
+    const rows = data.next_12h;
+    const curHour = cur ? cur.hour_start : null;
+
+    section.classList.toggle("is-stale", Boolean(data.stale));
+    dotEl.setAttribute("data-tier", cur ? cur.tier : "");
+
+    if (cur) {
+      priceEl.textContent = `${fmtOre.format(cur.price_ore)} öre/kWh`;
+      const cheap = cheapestAhead(rows);
+      if (cheap && cheap.hour_start !== curHour) {
+        const hh = new Date(cheap.hour_start).getHours();
+        hintEl.textContent =
+          `Cheapest in next 12 h: ${String(hh).padStart(2, "0")}:00 ` +
+          `at ~${fmtOre.format(cheap.price_ore)} öre/kWh`;
+      } else {
+        hintEl.textContent = "";
+      }
+    } else {
+      priceEl.textContent = "—";
+      hintEl.textContent = "";
+    }
+
+    const updated = data.generated_at ? new Date(data.generated_at) : null;
+    const src = data.source || "";
+    metaEl.textContent = updated
+      ? `Updated ${updated.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}` +
+        (data.stale ? " · data may be stale" : "") +
+        (src ? ` · ${src}` : "")
+      : src;
+
+    renderChart(rows, data.window_stats, curHour);
+  }
+
+  async function load() {
+    try {
+      const res = await fetch(FEED_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      render(data);
+    } catch (e) {
+      // Scraper isn't running or JSON missing — hide the card quietly.
+      section.hidden = true;
+    }
+  }
+
+  load();
+  setInterval(load, REFRESH_MS);
+})();

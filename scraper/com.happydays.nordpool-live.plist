@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS LaunchAgent template for scraper/nordpool_live.py.
+
+  Before installing:
+    1. Replace ${REPO_ROOT} below with the absolute path to this repo.
+       On this machine that is:
+         /Users/bjorn_ahl/Downloads/GitHub/HappyDays_florentxlundaisociety
+    2. Optionally override HAPPYDAYS_ZONE and POLL_SECONDS.
+    3. Ensure ~/Library/Logs exists (it does by default on macOS).
+
+  Install (from repo root):
+    sed "s#__REPO_ROOT__#$PWD#g" \
+        scraper/com.happydays.nordpool-live.plist \
+      > ~/Library/LaunchAgents/com.happydays.nordpool-live.plist
+    launchctl bootstrap gui/$(id -u) \
+        ~/Library/LaunchAgents/com.happydays.nordpool-live.plist
+
+  Tail logs:
+    tail -f ~/Library/Logs/happydays-nordpool.out.log \
+            ~/Library/Logs/happydays-nordpool.err.log
+
+  Uninstall:
+    launchctl bootout gui/$(id -u)/com.happydays.nordpool-live
+    rm ~/Library/LaunchAgents/com.happydays.nordpool-live.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.happydays.nordpool-live</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>__REPO_ROOT__/scraper/nordpool_live.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO_ROOT__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HAPPYDAYS_ZONE</key>
+    <string>SE4</string>
+    <key>POLL_SECONDS</key>
+    <string>60</string>
+    <!-- Day-ahead prices update once per day ~13:00 CET, so 6 h is plenty. -->
+    <key>FETCH_SECONDS</key>
+    <string>21600</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- Start at login and keep it running. KeepAlive respawns on crash. -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Throttle respawns: if the script dies in under 10 s, wait that long
+       before restarting so we don't hot-loop on a persistent failure. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__REPO_ROOT__/.happydays-nordpool.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO_ROOT__/.happydays-nordpool.err.log</string>
+</dict>
+</plist>
