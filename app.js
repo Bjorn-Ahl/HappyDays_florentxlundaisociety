@@ -28,9 +28,8 @@
   const citySelect = document.getElementById("city-select");
   const panelSelect = document.getElementById("panel-type");
   const panelNote = document.getElementById("panel-type-note");
-  const upkeepInput = document.getElementById("upkeep");
-  const upkeepOut = document.getElementById("upkeep-out");
   const sellExcess = document.getElementById("sell-excess");
+  const DEFAULT_UPKEEP_FRACTION = 0.01;
   const batteryEnabled = document.getElementById("battery-enabled");
   const batteryRow = document.getElementById("battery-row");
   const batteryKwhInput = document.getElementById("battery-kwh");
@@ -186,12 +185,6 @@
   // ---- Live output bindings ---------------------------------------------
 
   function bindLiveOutputs() {
-
-    upkeepInput.addEventListener("input", () => {
-      const v = Number(upkeepInput.value);
-      upkeepOut.textContent = `${v.toFixed(1)}%`;
-    });
-
     function updateBatteryCost() {
       const kwh = Number(batteryKwhInput.value);
       if (Number.isFinite(kwh) && kwh > 0) {
@@ -413,7 +406,7 @@
     const roofAreaM2 = Number(document.getElementById("roof-area").value);
     const budgetRaw = document.getElementById("budget").value;
     const budget = budgetRaw === "" ? undefined : Number(budgetRaw);
-    const upkeepFraction = Number(upkeepInput.value) / 100;
+    const upkeepFraction = DEFAULT_UPKEEP_FRACTION;
     const batteryKwh = batteryEnabled.checked
       ? Number(batteryKwhInput.value) || 0
       : 0;
@@ -486,7 +479,7 @@
       usage,
       roofAreaM2,
       budget: budget == null ? null : budget,
-      upkeepPct: Number(upkeepInput.value),
+      upkeepPct: DEFAULT_UPKEEP_FRACTION * 100,
       sellExcess: sellExcess.checked,
       batteryKwh,
       hasEv,
