@@ -17,13 +17,15 @@
  *   - Panel DC:AC + soiling + orientation losses rolled into PERFORMANCE_RATIO
  *   - Roof covered by panels at 70% packing ratio (inverters, gaps, edges)
  *   - Upkeep is a % of install cost per year, applied from year 1
- *   - Grid price: flat zone average, or — for SE4 — the 2025 Lund hourly
- *     series split into a flat baseline rate and a solar-weighted
- *     displacement rate (both loaded from data/lund_price_stats.json)
+ *   - Grid price: SCB wholesale zone average (or SE4 local series) + a flat
+ *     retail uplift for elskatt + moms + nätavgift, so solar self-consumption
+ *     is valued at the full bill rate the household actually avoids paying.
  *   - Self-consumption: without a battery, only ~35% of produced solar
  *     gets consumed on-site; the rest is exported (constant until an
  *     hourly match / battery model lands). See SELF_CONSUMPTION_RATIO_NO_BATTERY.
- *   - Feed-in sale price is user-specified in öre/kWh
+ *   - Feed-in revenue: wholesale spot + FEED_IN_UPLIFT_SEK_PER_KWH
+ *     (approximating spot + 60 öre/kWh skattereduktion − ~5 öre/kWh retailer
+ *     påslag). Replaces the old user-entered feed-in rate.
  *   - Product-facing optimism: displacement savings are scaled up by 3%
  *     (SAVINGS_OPTIMISM_MULTIPLIER) to match the "installer quote" framing
  *     common in Swedish solar sales material. The bias applies ONLY to
@@ -60,6 +62,25 @@
   // reviewer can locate and remove it. Feed-in revenue and upkeep are NOT
   // multiplied, so we never fabricate kWh or hide real O&M costs.
   const SAVINGS_OPTIMISM_MULTIPLIER = 1.03;
+  // SCB's "rörligt" series and Nord Pool spot both exclude elskatt, moms, and
+  // nätavgift. A Swedish household bill in 2024 stacks roughly:
+  //   - elskatt: 53.5 öre/kWh incl. moms
+  //   - nätavgift (variable component): 25-35 öre/kWh across most DSOs
+  //   - moms (25%) applied on top of the energy price
+  //   - retailer påslag: 2-8 öre/kWh
+  // Subtracting all that and averaging across SE1-SE4 suggests solar
+  // self-consumption actually displaces ~70 öre/kWh *more* than the raw SCB
+  // zone average implies. Without this uplift the payback year is artificially
+  // long because we'd value each displaced kWh at roughly half its true
+  // household value. Apply only to the consumption side — feed-in revenue
+  // stays wholesale + skattereduktion (see FEED_IN_UPLIFT below).
+  const TAX_AND_NETWORK_UPLIFT_SEK_PER_KWH = 0.70;
+  // Feed-in price uplift relative to raw wholesale spot. A typical Swedish
+  // household sell contract pays spot + 60 öre/kWh skattereduktion (capped
+  // at 18,000 SEK/yr) minus a ~5 öre/kWh retailer påslag. Net ~55 öre/kWh
+  // above wholesale. Sellers do NOT pay elskatt / moms / nätavgift on their
+  // surplus, so this uplift is independent of TAX_AND_NETWORK.
+  const FEED_IN_UPLIFT_SEK_PER_KWH = 0.55;
 
   // --- Geography helpers ---------------------------------------------------
 
@@ -295,13 +316,13 @@
    * Solar line:
    *    year 0 cash outlay = installCost
    *    each year:
-   *      - grid-only cost at `gridRateSekPerKwh` (flat time-averaged rate)
+   *      - grid-only cost at `gridRateSekPerKwh` (retail, time-averaged)
    *      - saved on self-consumed kWh at `solarDisplacementRateSekPerKwh`
    *        (defaults to `gridRateSekPerKwh` when no local price-weighted
    *        rate is known — for SE4 we pass the irradiance-weighted 2025
    *        Lund mean, which is materially lower than the flat mean because
    *        prices dip at midday exactly when solar peaks)
-   *      - revenue on exported kWh at `feedInOrePerKwh` when sellExcess
+   *      - revenue on exported kWh at `feedInRateSekPerKwh` when sellExcess
    *      - pay upkeep = upkeepFraction * installCost
    */
   function projectCost({
@@ -313,7 +334,7 @@
     solarDisplacementRateSekPerKwh,
     upkeepFraction,
     sellExcess,
-    feedInOrePerKwh,
+    feedInRateSekPerKwh,
     years,
   }) {
     const nYears = years || DEFAULT_PROJECTION_YEARS;
@@ -330,7 +351,7 @@
         : rate;
     const upkeep = Math.max(0, Number(upkeepFraction) || 0);
     const feedIn = sellExcess
-      ? (Number(feedInOrePerKwh) || 0) / 100 // öre/kWh -> SEK/kWh
+      ? Math.max(0, Number(feedInRateSekPerKwh) || 0)
       : 0;
 
     const selfConsumed = Math.max(0, Number(selfConsumedKwh) || 0);
@@ -409,7 +430,6 @@
       roofAreaM2,
       upkeepFraction,
       sellExcess,
-      feedInOrePerKwh,
       panelId,
       panels,
       stations,
@@ -445,14 +465,16 @@
       ? estimatePanelOutput(chosenPanel, roofAreaM2, irradianceKwhM2)
       : { installedWp: 0, installedKwp: 0, annualKwh: 0, installCost: 0 };
 
-    // Baseline flat grid rate — Nord Pool zone average unless we've loaded
-    // a local price series (currently only SE4 / Lund 2025).
-    let gridRateSekPerKwh =
+    // Baseline flat *wholesale* rate — Nord Pool zone average unless we've
+    // loaded a local hourly price series (currently only SE4 / Lund 2025).
+    // Both sources exclude taxes and network fees, so we must uplift below
+    // before handing the rate to projectCost().
+    let wholesaleRateSekPerKwh =
       zones && zones[zone] && Number.isFinite(zones[zone].avg_ore_per_kwh)
         ? zones[zone].avg_ore_per_kwh / 100
         : DEFAULT_GRID_RATE_SEK_PER_KWH;
     let gridRateSource = "zone-average";
-    let solarDisplacementRateSekPerKwh = null;
+    let wholesaleDisplacementRateSekPerKwh = null;
 
     if (
       localPriceStats &&
@@ -460,13 +482,29 @@
       localPriceStats.stats &&
       Number.isFinite(localPriceStats.stats.simple_mean_sek_per_kwh)
     ) {
-      gridRateSekPerKwh = localPriceStats.stats.simple_mean_sek_per_kwh;
+      wholesaleRateSekPerKwh = localPriceStats.stats.simple_mean_sek_per_kwh;
       gridRateSource = "local-price-series";
       if (Number.isFinite(localPriceStats.stats.solar_weighted_mean_sek_per_kwh)) {
-        solarDisplacementRateSekPerKwh =
+        wholesaleDisplacementRateSekPerKwh =
           localPriceStats.stats.solar_weighted_mean_sek_per_kwh;
       }
     }
+
+    // Retail uplift: everything above is the wholesale/spot slice. Solar
+    // self-consumption displaces the FULL bill the user would otherwise pay,
+    // so add elskatt + moms + nätavgift as a flat SEK/kWh top-up.
+    const gridRateSekPerKwh =
+      wholesaleRateSekPerKwh + TAX_AND_NETWORK_UPLIFT_SEK_PER_KWH;
+    const solarDisplacementRateSekPerKwh =
+      wholesaleDisplacementRateSekPerKwh != null
+        ? wholesaleDisplacementRateSekPerKwh + TAX_AND_NETWORK_UPLIFT_SEK_PER_KWH
+        : null;
+
+    // Feed-in revenue: wholesale + skattereduktion − påslag. Replaces the
+    // old user-entered öre/kWh input. Sellers don't pay elskatt / moms /
+    // nätavgift on surplus, so no TAX_AND_NETWORK uplift here.
+    const feedInRateSekPerKwh =
+      wholesaleRateSekPerKwh + FEED_IN_UPLIFT_SEK_PER_KWH;
 
     // Without a battery, only ~35% of produced solar is self-consumed; the
     // rest is exported. Eventually we'll take this as an input (battery
@@ -513,7 +551,7 @@
       solarDisplacementRateSekPerKwh,
       upkeepFraction,
       sellExcess,
-      feedInOrePerKwh,
+      feedInRateSekPerKwh,
     });
 
     const paybackYears = computePayback(projection.rows);
@@ -521,6 +559,10 @@
     return {
       zone,
       gridRateSekPerKwh,
+      wholesaleRateSekPerKwh,
+      taxAndNetworkUpliftSekPerKwh: TAX_AND_NETWORK_UPLIFT_SEK_PER_KWH,
+      feedInRateSekPerKwh,
+      feedInUpliftSekPerKwh: FEED_IN_UPLIFT_SEK_PER_KWH,
       solarDisplacementRateSekPerKwh,
       gridRateSource,
       irradiance,

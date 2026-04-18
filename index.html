@@ -153,18 +153,11 @@
               <input type="checkbox" id="sell-excess" name="sell-excess" />
               <label for="sell-excess">Sell excess production to the grid</label>
             </div>
-            <div class="feed-in-row" id="feed-in-wrap" hidden>
-              <label for="feed-in-rate">Feed-in rate (öre/kWh)</label>
-              <input
-                type="number"
-                id="feed-in-rate"
-                name="feed-in-rate"
-                min="0"
-                step="1"
-                value="60"
-                inputmode="numeric"
-              />
-            </div>
+            <p class="hint">
+              If enabled, surplus is valued at the current Nord Pool zone
+              average plus the typical skattereduktion (60 öre/kWh) minus a
+              small retailer påslag.
+            </p>
           </div>
 
           <!-- 8. PRIORITIES (kept from v1) -->
@@ -298,8 +291,11 @@
     <div class="container">
       <p>
         Irradiance data: SMHI Open Data (parameter 11, global irradiance, 3-year mean).
-        Electricity prices: SCB Elprisstatistik 2022–2024 (rörligt contract, excl.
-        elskatt/moms/nätavgift). Cost model is illustrative — no inflation or subsidies.
+        Electricity prices: SCB Elprisstatistik 2022–2024 (rörligt contract), with a
+        flat +70 öre/kWh uplift for elskatt, moms, and nätavgift so that solar
+        self-consumption is valued at the retail rate the household actually pays.
+        Feed-in revenue is valued at wholesale + skattereduktion − retailer påslag.
+        Cost model is illustrative — no inflation or subsidies.
       </p>
     </div>
   </footer>
