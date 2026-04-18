@@ -1,176 +1,289 @@
 /*
- * HappyDays — v1 advisor logic (frontend-only)
+ * HappyDays — v2 app glue (DOM wiring, event handlers, rendering).
  *
- * NOTE: All calculations in this file are PLACEHOLDERS. They are
- * deliberately simple heuristics that react plausibly to input changes.
- * They are intended to be replaced once the SMHI irradiance/wind data
- * scraping pipeline is wired in, and once proper cost/subsidy tables
- * (e.g. grid tariffs per elområde, green deduction) are sourced.
+ * Pure calculation lives in calc.js (window.HappyDaysCalc). This file is
+ * intentionally thin: read inputs, call calc, paint results.
  *
- * Assumptions baked in (TODO: replace):
- *   - Flat Swedish grid electricity price ~2.20 SEK/kWh
- *   - Flat on-site generation cost ~0.40 SEK/kWh (amortised)
- *   - One-off install cost ~18 SEK per annual kWh offset by solar
- *   - No inflation, no subsidies, no resale of surplus, no battery
- *   - Rooftop wind capped low — uncommon in SE residential contexts
+ * Loaded as a plain <script defer>, so `open index.html` works without a
+ * server. JSON data (SMHI irradiance, electricity zones) is fetched at
+ * runtime; if that fails (e.g. file:// origin), we fall back to the
+ * latitude-zoned heuristics inside calc.js.
  */
-
 (function () {
   "use strict";
 
-  // --- Constants (placeholders) ---
-  const GRID_RATE_SEK_PER_KWH = 2.2;
-  const ONSITE_RATE_SEK_PER_KWH = 0.4;
-  const INSTALL_COST_PER_ANNUAL_KWH = 18;
-  const PROJECTION_YEARS = 10;
+  // ---- Constants ---------------------------------------------------------
 
-  // --- DOM refs ---
+  // Sweden bounding box — rough rectangle the user is locked into.
+  const SWEDEN_BOUNDS = L.latLngBounds([55.0, 10.5], [69.1, 24.2]);
+  const SWEDEN_CENTER = [62.5, 16.5];
+
+  // ---- DOM refs ----------------------------------------------------------
+
   const form = document.getElementById("advisor-form");
+  const liveStatus = document.getElementById("live-status");
+  const mapReadoutValue = document.getElementById("map-readout-value");
+  const latInput = document.getElementById("lat");
+  const lngInput = document.getElementById("lng");
+  const citySelect = document.getElementById("city-select");
+  const panelSelect = document.getElementById("panel-type");
+  const panelNote = document.getElementById("panel-type-note");
+  const upkeepInput = document.getElementById("upkeep");
+  const upkeepOut = document.getElementById("upkeep-out");
+  const sellExcess = document.getElementById("sell-excess");
+  const feedInWrap = document.getElementById("feed-in-wrap");
+
   const results = document.getElementById("results");
   const resultsLead = document.getElementById("results-lead");
+  const zoneChip = document.getElementById("zone-chip");
+  const zoneDetail = document.getElementById("zone-detail");
+  const panelSummary = document.getElementById("panel-summary");
+  const irradianceSummary = document.getElementById("irradiance-summary");
+
+  const paybackValue = document.getElementById("payback-value");
+  const paybackLabel = document.getElementById("payback-label");
 
   const segSolar = document.getElementById("seg-solar");
-  const segWind = document.getElementById("seg-wind");
   const segGrid = document.getElementById("seg-grid");
   const pctSolar = document.getElementById("pct-solar");
-  const pctWind = document.getElementById("pct-wind");
   const pctGrid = document.getElementById("pct-grid");
-
   const coverageValue = document.getElementById("coverage-value");
   const independenceValue = document.getElementById("independence-value");
   const independenceLabel = document.getElementById("independence-label");
 
-  const costChart = document.getElementById("cost-chart");
+  const breakEvenChart = document.getElementById("break-even-chart");
   const costTableBody = document.querySelector("#cost-table tbody");
 
-  // --- Live slider output binding ---
-  ["w-cost", "w-independence", "w-sustainability"].forEach((id) => {
-    const input = document.getElementById(id);
+  // ---- Async-loaded reference data ---------------------------------------
 
-    const out = document.getElementById(`${id}-out`);
-    if (!input || !out) return;
-    input.addEventListener("input", () => {
-      out.textContent = input.value;
+  let irradianceStations = [];      // from data/smhi_irradiance.json
+  let irradianceMeta = { source: null, generatedAt: null };
+  let electricityZones = null;      // from data/electricity_zones.json
+
+  // ---- Populate form UI --------------------------------------------------
+
+  function populatePanelSelect() {
+    const html = (window.PANEL_TYPES || [])
+      .map(
+        (p) =>
+          `<option value="${p.id}"${p.id === "auto" ? " selected" : ""}>${p.label}</option>`
+      )
+      .join("");
+    panelSelect.innerHTML = html;
+  }
+
+  function populateCityFallback() {
+    const html = (window.SWEDISH_CITIES || [])
+      .map((c) => `<option value="${c.name}">${c.name}</option>`)
+      .join("");
+    citySelect.insertAdjacentHTML("beforeend", html);
+  }
+
+  // ---- Leaflet map -------------------------------------------------------
+
+  let map;
+  let marker;
+
+  function initMap() {
+    map = L.map("map", {
+      center: SWEDEN_CENTER,
+      zoom: 5,
+      minZoom: 4,
+      maxZoom: 11,
+      maxBounds: SWEDEN_BOUNDS,
+      maxBoundsViscosity: 1.0,
+      worldCopyJump: false,
     });
-  });
 
-  // --- Main calculator ---
-  function computeRecommendation({
-    usage,
-    budget,
-    wCost,
-    wIndependence,
-    wSustainability,
-  }) {
-    // Normalise priority weights
-    const total = wCost + wIndependence + wSustainability;
-    const nCost = wCost / total;
-    const nInd = wIndependence / total;
-    const nSus = wSustainability / total;
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 11,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
 
-    // Solar share: boosted by independence + sustainability,
-    // dampened by cost priority (especially when budget is tight/absent).
-    let solarShare = 0.55 * nSus + 0.45 * nInd - 0.35 * nCost;
-    // Base floor so solar always shows up as *some* option
-    solarShare = Math.max(0.1, Math.min(0.85, solarShare + 0.3));
+    map.fitBounds(SWEDEN_BOUNDS);
 
-    // Budget dampener: if budget is provided and small relative to
-    // the implied install cost, reduce solar share.
-    if (typeof budget === "number" && budget > 0) {
-      // Implied install cost if we were 100% solar-offset:
-      const maxInstallCost = usage * INSTALL_COST_PER_ANNUAL_KWH;
-      const affordRatio = budget / maxInstallCost; // 1.0 = can fully afford
-      if (affordRatio < 1) {
-        // scale solar down, but never below 10%
-        solarShare = Math.max(0.1, solarShare * Math.max(0.4, affordRatio));
+    map.on("click", (e) => {
+      setLocation(e.latlng.lat, e.latlng.lng, { source: "map" });
+    });
+  }
+
+  function setLocation(lat, lng, { source } = {}) {
+    if (!SWEDEN_BOUNDS.contains([lat, lng])) return;
+    latInput.value = lat.toFixed(5);
+    lngInput.value = lng.toFixed(5);
+    const readout = `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+    mapReadoutValue.textContent = readout;
+
+    if (!marker) {
+      marker = L.marker([lat, lng], {
+        draggable: true,
+        keyboard: true,
+        title: "Chosen location — drag to move",
+      }).addTo(map);
+      marker.on("dragend", () => {
+        const p = marker.getLatLng();
+        setLocation(p.lat, p.lng, { source: "drag" });
+      });
+    } else {
+      marker.setLatLng([lat, lng]);
+    }
+
+    if (source !== "drag") {
+      map.panTo([lat, lng], { animate: true });
+    }
+  }
+
+  // ---- Async data loading -----------------------------------------------
+
+  async function loadReferenceData() {
+    // fetch(url) may fail on file:// origin — we degrade gracefully.
+    try {
+      const res = await fetch("data/smhi_irradiance.json", { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        irradianceStations = Array.isArray(json.stations) ? json.stations : [];
+        irradianceMeta = {
+          source: typeof json.source === "string" ? json.source : null,
+          generatedAt: typeof json.generated_at === "string" ? json.generated_at : null,
+        };
       }
+    } catch (e) {
+      console.warn("[HappyDays] SMHI JSON not loadable; using lat-zoned fallback.", e);
+    }
+    try {
+      const res = await fetch("data/electricity_zones.json", { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        electricityZones = json && json.zones ? json.zones : null;
+      }
+    } catch (e) {
+      console.warn("[HappyDays] zones JSON not loadable; using default grid rate.", e);
+    }
+  }
+
+  // ---- Live output bindings ---------------------------------------------
+
+  function bindLiveOutputs() {
+    ["w-cost", "w-independence", "w-sustainability"].forEach((id) => {
+      const input = document.getElementById(id);
+      const out = document.getElementById(`${id}-out`);
+      if (!input || !out) return;
+      input.addEventListener("input", () => {
+        out.textContent = input.value;
+      });
+    });
+
+    upkeepInput.addEventListener("input", () => {
+      const v = Number(upkeepInput.value);
+      upkeepOut.textContent = `${v.toFixed(1)}%`;
+    });
+
+    sellExcess.addEventListener("change", () => {
+      feedInWrap.hidden = !sellExcess.checked;
+    });
+
+    citySelect.addEventListener("change", () => {
+      const name = citySelect.value;
+      if (!name) return;
+      const city = (window.SWEDISH_CITIES || []).find((c) => c.name === name);
+      if (city) {
+        setLocation(city.lat, city.lng, { source: "city" });
+        announce(`Location set to ${city.name}.`);
+      }
+    });
+
+    panelSelect.addEventListener("change", () => {
+      const id = panelSelect.value;
+      const p = (window.PANEL_TYPES || []).find((x) => x.id === id);
+      if (p) panelNote.textContent = p.note;
+    });
+  }
+
+  // ---- Live region announcements ----------------------------------------
+
+  function announce(msg) {
+    // Nudge aria-live by swapping text even when identical.
+    liveStatus.textContent = "";
+    setTimeout(() => {
+      liveStatus.textContent = msg;
+    }, 40);
+  }
+
+  // ---- Rendering --------------------------------------------------------
+
+  const fmtSek = new Intl.NumberFormat("sv-SE");
+  const fmtCompact = new Intl.NumberFormat("sv-SE", { notation: "compact" });
+
+  function renderSummary(rec) {
+    const zoneInfo =
+      electricityZones && electricityZones[rec.zone]
+        ? electricityZones[rec.zone]
+        : null;
+    zoneChip.textContent = rec.zone;
+    zoneDetail.textContent = zoneInfo
+      ? `${zoneInfo.name} · ~${zoneInfo.avg_ore_per_kwh} öre/kWh avg`
+      : `grid rate ${(rec.gridRateSekPerKwh).toFixed(2)} SEK/kWh`;
+
+    if (rec.panel) {
+      const e = rec.panelOutput;
+      const effStr =
+        rec.panel.efficiencyPct != null ? `${rec.panel.efficiencyPct}% eff` : "—";
+      const autoStr = rec.autoPicked ? " (auto-selected)" : "";
+      panelSummary.textContent = `${rec.panel.label}${autoStr} — ${e.installedKwp} kWp, ~${fmtSek.format(e.annualKwh)} kWh/yr, ${effStr}`;
+    } else {
+      panelSummary.textContent = "—";
     }
 
-    // Wind: small by default. Slight boost from sustainability + independence.
-    let windShare = 0.03 + 0.07 * (nSus + nInd) * 0.5;
-    windShare = Math.max(0.02, Math.min(0.12, windShare));
-
-    // Cap solar+wind so grid is at least 5%
-    if (solarShare + windShare > 0.95) {
-      const scale = 0.95 / (solarShare + windShare);
-      solarShare *= scale;
-      windShare *= scale;
+    const ir = rec.irradiance;
+    const topSource = irradianceMeta.source || ir.source || "unknown source";
+    const isFallback = /fallback|approximation|approximate/i.test(topSource);
+    const sourceTag = isFallback ? `⚠ Approximated: ${topSource}` : `Source: ${topSource}`;
+    if (ir.stationName) {
+      irradianceSummary.textContent = `${ir.stationName} — ${ir.annualKwhPerM2} kWh/m²/yr (${ir.distanceKm} km) · ${sourceTag}`;
+    } else {
+      irradianceSummary.textContent = `${ir.annualKwhPerM2} kWh/m²/yr · ${sourceTag}`;
     }
+    irradianceSummary.classList.toggle("fallback-warning", isFallback);
+  }
 
-    const gridShare = Math.max(0.05, 1 - solarShare - windShare);
+  function renderPayback(rec) {
+    if (rec.paybackYears == null) {
+      paybackValue.classList.add("no-payback");
+      paybackValue.innerHTML =
+        "Doesn't pay back within 25 years<span class='unit'></span>";
+      paybackLabel.textContent =
+        "With these inputs, cumulative savings never catch up to the install cost.";
+    } else {
+      paybackValue.classList.remove("no-payback");
+      paybackValue.innerHTML = `${rec.paybackYears}<span class="unit">years</span>`;
+      paybackLabel.textContent = `years until cumulative savings equal the ${fmtSek.format(
+        rec.installCost
+      )} SEK install cost`;
+    }
+  }
 
-    // Normalise tiny rounding drift to sum to 1
-    const sum = solarShare + windShare + gridShare;
-    const solar = solarShare / sum;
-    const wind = windShare / sum;
-    const grid = gridShare / sum;
+  function renderMix({ solar, grid }) {
+    const s = Math.round(solar * 100);
+    const g = Math.max(0, 100 - s);
 
-    // Coverage = on-site generation share of usage
-    const coverage = solar + wind;
+    segSolar.style.width = `${s}%`;
+    segGrid.style.width = `${g}%`;
+    pctSolar.textContent = `${s}%`;
+    pctGrid.textContent = `${g}%`;
 
-    // Independence score: on-site minus grid, mapped to 0-100
-    // (solar+wind) ranges roughly 0.12 -> 0.95; centre around 55.
-    const rawIndependence = (solar + wind) * 100 - grid * 20;
-    const independence = Math.max(0, Math.min(100, Math.round(rawIndependence)));
-
-    return { solar, wind, grid, coverage, independence };
+    document
+      .getElementById("mix-bar")
+      .setAttribute(
+        "aria-label",
+        `Recommended energy mix: ${s}% solar, ${g}% grid`
+      );
   }
 
   function independenceTier(score) {
     if (score < 34) return "Low independence — mostly grid-reliant.";
     if (score < 67) return "Moderate independence — meaningful self-supply.";
     return "High independence — largely self-sufficient on paper.";
-  }
-
-  // --- Cost projection ---
-  function projectCost({ usage, solar, wind }) {
-    const onsiteShare = solar + wind;
-    const gridShare = 1 - onsiteShare;
-
-    // Upfront install cost scales with how much annual kWh we're offsetting on-site
-    const installCost = usage * onsiteShare * INSTALL_COST_PER_ANNUAL_KWH;
-
-    const gridOnlyAnnual = usage * GRID_RATE_SEK_PER_KWH;
-    const mixedAnnual =
-      usage * gridShare * GRID_RATE_SEK_PER_KWH +
-      usage * onsiteShare * ONSITE_RATE_SEK_PER_KWH;
-
-    const rows = [];
-    let gridOnlyCum = 0;
-    let mixedCum = installCost;
-
-    for (let year = 1; year <= PROJECTION_YEARS; year++) {
-      gridOnlyCum += gridOnlyAnnual;
-      mixedCum += mixedAnnual;
-      rows.push({
-        year,
-        gridOnly: Math.round(gridOnlyCum),
-        mixed: Math.round(mixedCum),
-      });
-    }
-    return rows;
-  }
-
-  // --- Rendering ---
-  function renderMix({ solar, wind, grid }) {
-    const s = Math.round(solar * 100);
-    const w = Math.round(wind * 100);
-    // Absorb rounding error in grid so percentages sum to 100
-    const g = Math.max(0, 100 - s - w);
-
-    segSolar.style.width = `${s}%`;
-    segWind.style.width = `${w}%`;
-    segGrid.style.width = `${g}%`;
-
-    pctSolar.textContent = `${s}%`;
-    pctWind.textContent = `${w}%`;
-    pctGrid.textContent = `${g}%`;
-
-    const bar = document.getElementById("mix-bar");
-    bar.setAttribute(
-      "aria-label",
-      `Recommended energy mix: ${s}% solar, ${w}% wind, ${g}% grid`
-    );
   }
 
   function renderMetrics({ coverage, independence }) {
@@ -180,102 +293,16 @@
   }
 
   function renderTable(rows) {
-    const fmt = new Intl.NumberFormat("sv-SE");
-    costTableBody.innerHTML = rows
+    // Show years 1–10 in the table even though the chart goes to 25.
+    const first10 = rows.filter((r) => r.year >= 1 && r.year <= 10);
+    costTableBody.innerHTML = first10
       .map(
         (r) =>
-          `<tr><td>${r.year}</td><td>${fmt.format(r.gridOnly)}</td><td>${fmt.format(
+          `<tr><td>${r.year}</td><td>${fmtSek.format(r.gridOnly)}</td><td>${fmtSek.format(
             r.mixed
           )}</td></tr>`
       )
       .join("");
-  }
-
-  function renderChart(rows) {
-    // Inline SVG line chart, no dependencies.
-    const W = 600;
-    const H = 260;
-    const padL = 56;
-    const padR = 16;
-    const padT = 16;
-    const padB = 36;
-    const innerW = W - padL - padR;
-    const innerH = H - padT - padB;
-
-    const maxY = Math.max(
-      ...rows.map((r) => Math.max(r.gridOnly, r.mixed)),
-      1
-    );
-    // Round max up to a nice number for axis readability
-    const niceMax = niceCeil(maxY);
-
-    const xAt = (i) =>
-      padL + (innerW * i) / Math.max(1, rows.length - 1);
-    const yAt = (v) => padT + innerH - (v / niceMax) * innerH;
-
-    const toPath = (key) =>
-      rows
-        .map((r, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(r[key]).toFixed(1)}`)
-        .join(" ");
-
-    const gridPath = toPath("gridOnly");
-    const mixedPath = toPath("mixed");
-
-    const fmt = new Intl.NumberFormat("sv-SE", { notation: "compact" });
-
-    // Y-axis ticks: 0, 1/2, max
-    const ticks = [0, niceMax / 2, niceMax];
-    const tickLines = ticks
-      .map(
-        (t) =>
-          `<line x1="${padL}" y1="${yAt(t).toFixed(
-            1
-          )}" x2="${W - padR}" y2="${yAt(t).toFixed(
-            1
-          )}" stroke="#e3ebe8" stroke-width="1" />`
-      )
-      .join("");
-    const tickLabels = ticks
-      .map(
-        (t) =>
-          `<text x="${padL - 8}" y="${(yAt(t) + 4).toFixed(
-            1
-          )}" text-anchor="end" font-size="11" fill="#5a6b70">${fmt.format(
-            Math.round(t)
-          )}</text>`
-      )
-      .join("");
-
-    // X-axis year labels (every 2 years + last)
-    const xLabels = rows
-      .map((r, i) => {
-        if (i % 2 !== 0 && i !== rows.length - 1) return "";
-        return `<text x="${xAt(i).toFixed(
-          1
-        )}" y="${H - padB + 18}" text-anchor="middle" font-size="11" fill="#5a6b70">Y${r.year}</text>`;
-      })
-      .join("");
-
-    // Legend (simple, inside SVG)
-    const legend = `
-      <g transform="translate(${padL + 8}, ${padT + 8})">
-        <rect width="170" height="40" fill="#ffffff" fill-opacity="0.85" rx="6" />
-        <line x1="10" y1="14" x2="34" y2="14" stroke="#9aa6a9" stroke-width="3" />
-        <text x="42" y="18" font-size="12" fill="#1b2a2e">Grid only</text>
-        <line x1="10" y1="30" x2="34" y2="30" stroke="#2f6b53" stroke-width="3" />
-        <text x="42" y="34" font-size="12" fill="#1b2a2e">Recommended</text>
-      </g>`;
-
-    costChart.innerHTML = `
-      ${tickLines}
-      ${tickLabels}
-      ${xLabels}
-      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="#c9d3d0" stroke-width="1" />
-      <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="#c9d3d0" stroke-width="1" />
-      <path d="${gridPath}" fill="none" stroke="#9aa6a9" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
-      <path d="${mixedPath}" fill="none" stroke="#2f6b53" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
-      ${legend}
-    `;
   }
 
   function niceCeil(n) {
@@ -291,53 +318,546 @@
     return nice * pow;
   }
 
-  // --- Submit handler ---
+  function renderBreakEvenChart(rows, paybackYears) {
+    const W = 600;
+    const H = 280;
+    const padL = 60;
+    const padR = 20;
+    const padT = 20;
+    const padB = 40;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+
+    const maxY = Math.max(
+      ...rows.map((r) => Math.max(r.gridOnly, r.mixed)),
+      1
+    );
+    const niceMax = niceCeil(maxY);
+    const lastYear = rows[rows.length - 1].year;
+
+    const xAt = (year) => padL + (innerW * year) / Math.max(1, lastYear);
+    const yAt = (v) => padT + innerH - (v / niceMax) * innerH;
+
+    const toPath = (key) =>
+      rows
+        .map(
+          (r, i) =>
+            `${i === 0 ? "M" : "L"}${xAt(r.year).toFixed(1)},${yAt(r[key]).toFixed(1)}`
+        )
+        .join(" ");
+
+    const gridPath = toPath("gridOnly");
+    const mixedPath = toPath("mixed");
+
+    // Ticks
+    const yTicks = [0, niceMax / 4, niceMax / 2, (3 * niceMax) / 4, niceMax];
+    const tickLines = yTicks
+      .map(
+        (t) =>
+          `<line x1="${padL}" y1="${yAt(t).toFixed(
+            1
+          )}" x2="${W - padR}" y2="${yAt(t).toFixed(
+            1
+          )}" stroke="#e3ebe8" stroke-width="1" />`
+      )
+      .join("");
+    const tickLabels = yTicks
+      .map(
+        (t) =>
+          `<text x="${padL - 8}" y="${(yAt(t) + 4).toFixed(
+            1
+          )}" text-anchor="end" font-size="11" fill="#5a6b70">${fmtCompact.format(
+            Math.round(t)
+          )}</text>`
+      )
+      .join("");
+
+    const xTicksEvery = 5;
+    const xLabels = [];
+    for (let y = 0; y <= lastYear; y += xTicksEvery) {
+      xLabels.push(
+        `<text x="${xAt(y).toFixed(1)}" y="${
+          H - padB + 18
+        }" text-anchor="middle" font-size="11" fill="#5a6b70">Y${y}</text>`
+      );
+    }
+
+    // Crossover marker
+    let crossoverMarker = "";
+    if (paybackYears != null && paybackYears <= lastYear) {
+      // Linearly interpolate the mixed-line Y at the crossover year.
+      const prev = rows[Math.floor(paybackYears)];
+      const next = rows[Math.ceil(paybackYears)] || prev;
+      const t = paybackYears - Math.floor(paybackYears);
+      const crossY = prev.gridOnly + t * (next.gridOnly - prev.gridOnly);
+      const cx = xAt(paybackYears);
+      const cy = yAt(crossY);
+      crossoverMarker = `
+        <line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(
+        1
+      )}" y2="${H - padB}" stroke="#2f6b53" stroke-width="1" stroke-dasharray="4 3" />
+        <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(
+        1
+      )}" r="6" fill="#fff" stroke="#2f6b53" stroke-width="2.5" />
+        <text x="${(cx + 8).toFixed(
+          1
+        )}" y="${(cy - 10).toFixed(
+        1
+      )}" font-size="12" font-weight="600" fill="#2f6b53">Break even · ${paybackYears}y</text>
+      `;
+    }
+
+    const legend = `
+      <g transform="translate(${padL + 8}, ${padT + 6})">
+        <rect width="180" height="44" fill="#ffffff" fill-opacity="0.9" rx="6" stroke="#e3ebe8" />
+        <line x1="10" y1="16" x2="34" y2="16" stroke="#9aa6a9" stroke-width="3" />
+        <text x="42" y="20" font-size="12" fill="#1b2a2e">Grid only</text>
+        <line x1="10" y1="34" x2="34" y2="34" stroke="#2f6b53" stroke-width="3" />
+        <text x="42" y="38" font-size="12" fill="#1b2a2e">Solar investment</text>
+      </g>`;
+
+    breakEvenChart.innerHTML = `
+      ${tickLines}
+      ${tickLabels}
+      ${xLabels.join("")}
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="#c9d3d0" stroke-width="1" />
+      <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="#c9d3d0" stroke-width="1" />
+      <path d="${gridPath}" fill="none" stroke="#9aa6a9" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+      <path d="${mixedPath}" fill="none" stroke="#2f6b53" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+      ${crossoverMarker}
+      ${legend}
+    `;
+  }
+
+  // ---- Submit handler ---------------------------------------------------
+
   form.addEventListener("submit", (e) => {
     e.preventDefault();
 
-    const location = (document.getElementById("location").value || "").trim();
-    const usageRaw = document.getElementById("usage").value;
+    const lat = Number(latInput.value);
+    const lng = Number(lngInput.value);
+    const usage = Number(document.getElementById("usage").value);
+    const roofAreaM2 = Number(document.getElementById("roof-area").value);
     const budgetRaw = document.getElementById("budget").value;
+    const budget = budgetRaw === "" ? undefined : Number(budgetRaw);
+    const upkeepFraction = Number(upkeepInput.value) / 100;
+    const wCost = Number(document.getElementById("w-cost").value);
+    const wInd = Number(document.getElementById("w-independence").value);
+    const wSus = Number(document.getElementById("w-sustainability").value);
+    const panelId = panelSelect.value;
+    const feedInOrePerKwh = Number(document.getElementById("feed-in-rate").value);
 
-    const usage = Number(usageRaw);
-    const budget = budgetRaw === "" ? null : Number(budgetRaw);
-
-    if (!location) {
-      document.getElementById("location").focus();
+    // Validation
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      announce("Please pick a location on the map first.");
+      document.getElementById("map").scrollIntoView({ behavior: "smooth" });
       return;
     }
     if (!Number.isFinite(usage) || usage <= 0) {
       document.getElementById("usage").focus();
       return;
     }
+    if (!Number.isFinite(roofAreaM2) || roofAreaM2 <= 0) {
+      document.getElementById("roof-area").focus();
+      return;
+    }
 
-    const wCost = Number(document.getElementById("w-cost").value);
-    const wInd = Number(document.getElementById("w-independence").value);
-    const wSus = Number(document.getElementById("w-sustainability").value);
-
-    const rec = computeRecommendation({
+    const rec = window.HappyDaysCalc.computeRecommendation({
+      lat,
+      lng,
       usage,
-      budget: budget ?? undefined,
+      budget,
       wCost,
       wIndependence: wInd,
       wSustainability: wSus,
+      roofAreaM2,
+      upkeepFraction,
+      sellExcess: sellExcess.checked,
+      feedInOrePerKwh,
+      panelId,
+      panels: window.PANEL_TYPES,
+      stations: irradianceStations,
+      zones: electricityZones,
     });
 
-    const rows = projectCost({ usage, solar: rec.solar, wind: rec.wind });
-
-    resultsLead.textContent = `Based on ${new Intl.NumberFormat("sv-SE").format(
+    resultsLead.textContent = `Based on ${fmtSek.format(
       usage
-    )} kWh/year in ${location}, here is a plausible starting point.`;
+    )} kWh/year at ${lat.toFixed(2)}, ${lng.toFixed(2)} — zone ${rec.zone}.`;
 
-    renderMix(rec);
-    renderMetrics(rec);
-    renderTable(rows);
-    renderChart(rows);
+    renderSummary(rec);
+    renderPayback(rec);
+    renderMix(rec.mix);
+    renderMetrics(rec.mix);
+    renderTable(rec.projection.rows);
+    renderBreakEvenChart(rec.projection.rows, rec.paybackYears);
 
     results.hidden = false;
-    // Move focus to results for screen-reader users, and scroll into view.
     results.setAttribute("tabindex", "-1");
     results.focus({ preventScroll: true });
     results.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    announce(
+      rec.paybackYears != null
+        ? `Results updated. Payback in ${rec.paybackYears} years.`
+        : "Results updated. This configuration does not pay back within 25 years."
+    );
+
+    // Publish a compact snapshot for the AI adviser.
+    const formSnapshot = {
+      lat,
+      lng,
+      usage,
+      roofAreaM2,
+      budget: budget == null ? null : budget,
+      upkeepPct: Number(upkeepInput.value),
+      sellExcess: sellExcess.checked,
+      feedInOrePerKwh,
+      panelId,
+      priorities: { cost: wCost, independence: wInd, sustainability: wSus },
+    };
+    const recSnapshot = {
+      zone: rec.zone,
+      gridRateSekPerKwh: rec.gridRateSekPerKwh,
+      panel: rec.panel ? { id: rec.panel.id, label: rec.panel.label } : null,
+      autoPicked: rec.autoPicked,
+      installCost: rec.installCost,
+      panelOutput: rec.panelOutput,
+      irradiance: rec.irradiance,
+      mix: {
+        solar: Math.round(rec.mix.solar * 100),
+        grid: Math.round(rec.mix.grid * 100),
+        coverage: Math.round(rec.mix.coverage * 100),
+        independence: rec.mix.independence,
+      },
+      paybackYears: rec.paybackYears,
+      annualSavings: rec.projection ? rec.projection.annualSavings : null,
+    };
+    if (window.HappyDaysAdviser) {
+      window.HappyDaysAdviser.updateContext(recSnapshot, formSnapshot);
+    }
   });
+
+  // ---- Boot -------------------------------------------------------------
+
+  function boot() {
+    populatePanelSelect();
+    populateCityFallback();
+    bindLiveOutputs();
+
+    // Set a sensible default panel-note (auto is selected on load).
+    const def = (window.PANEL_TYPES || []).find((p) => p.id === "auto");
+    if (def) panelNote.textContent = def.note;
+
+    initMap();
+
+    // Fire-and-forget: JSON fetch is best-effort.
+    loadReferenceData();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
+
+/* ==========================================================================
+ * AI adviser side panel (v3)
+ *
+ * Talks to POST /api/chat served by server/main.py. Parses SSE stream.
+ * Keeps the latest recommendation + form snapshot in a module-level variable;
+ * app.js above publishes to it via window.HappyDaysAdviser.updateContext.
+ * ========================================================================== */
+(function () {
+  "use strict";
+
+  const panel = document.getElementById("adviser-panel");
+  const fab = document.getElementById("adviser-fab");
+  const toggleBtn = document.getElementById("adviser-toggle");
+  const toggleIcon = document.getElementById("adviser-toggle-icon");
+  const form = document.getElementById("adviser-form");
+  const textarea = document.getElementById("adviser-textarea");
+  const sendBtn = document.getElementById("adviser-send");
+  const messagesEl = document.getElementById("adviser-messages");
+  const emptyEl = document.getElementById("adviser-empty");
+
+  if (!panel || !form || !textarea) return;
+
+  // Breakpoint shared with CSS.
+  const DESKTOP_QUERY = window.matchMedia("(min-width: 900px)");
+
+  // Chat state
+  const history = [];      // [{role, content}]
+  let latestRec = null;
+  let latestForm = null;
+  let streaming = false;
+
+  // ---- Context API (called by the main form submit) -------------------
+  window.HappyDaysAdviser = {
+    updateContext(rec, formSnapshot) {
+      latestRec = rec || null;
+      latestForm = formSnapshot || null;
+    },
+  };
+
+  // ---- Layout: desktop panel vs mobile FAB ----------------------------
+  function syncLayout() {
+    if (DESKTOP_QUERY.matches) {
+      fab.hidden = true;
+      panel.setAttribute("aria-hidden", "false");
+      panel.style.display = "";
+    } else {
+      // On mobile: hide panel unless explicitly opened via FAB.
+      if (!panel.dataset.mobileOpen) {
+        panel.setAttribute("aria-hidden", "true");
+      }
+      fab.hidden = false;
+    }
+  }
+  if (typeof DESKTOP_QUERY.addEventListener === "function") {
+    DESKTOP_QUERY.addEventListener("change", syncLayout);
+  } else if (typeof DESKTOP_QUERY.addListener === "function") {
+    DESKTOP_QUERY.addListener(syncLayout);
+  }
+
+  // ---- Open/close on mobile -------------------------------------------
+  fab.addEventListener("click", () => {
+    panel.dataset.mobileOpen = "1";
+    panel.setAttribute("aria-hidden", "false");
+    // Add a close button to the header for mobile.
+    ensureMobileCloseButton();
+    setTimeout(() => textarea.focus(), 20);
+  });
+
+  function ensureMobileCloseButton() {
+    if (toggleBtn.dataset.mobileClose === "1") return;
+    toggleBtn.dataset.mobileClose = "1";
+    toggleBtn.setAttribute("aria-label", "Close adviser panel");
+    toggleIcon.innerHTML = "&times;";
+    toggleBtn.addEventListener("click", mobileCloseHandler);
+  }
+
+  function mobileCloseHandler(e) {
+    if (!DESKTOP_QUERY.matches) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      delete panel.dataset.mobileOpen;
+      panel.setAttribute("aria-hidden", "true");
+      fab.focus();
+    }
+  }
+
+  // ---- Desktop collapse toggle ---------------------------------------
+  toggleBtn.addEventListener("click", () => {
+    if (!DESKTOP_QUERY.matches) return; // mobile handler covers this
+    const collapsed = panel.classList.toggle("is-collapsed");
+    document.body.classList.toggle("adviser-collapsed", collapsed);
+    toggleBtn.setAttribute("aria-expanded", String(!collapsed));
+    toggleBtn.setAttribute(
+      "aria-label",
+      collapsed ? "Expand adviser panel" : "Collapse adviser panel"
+    );
+    toggleIcon.innerHTML = collapsed ? "&#9664;" : "&#9654;";
+    if (!collapsed) {
+      setTimeout(() => textarea.focus(), 20);
+    }
+  });
+
+  // ---- Textarea auto-grow and Enter-to-send --------------------------
+  const LINE_HEIGHT = 22; // px, approximation for 6-row cap
+  function autoGrow() {
+    textarea.style.height = "auto";
+    const max = LINE_HEIGHT * 6 + 20;
+    textarea.style.height = Math.min(max, textarea.scrollHeight) + "px";
+  }
+  textarea.addEventListener("input", autoGrow);
+  textarea.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  // ---- Message rendering ---------------------------------------------
+  function hideEmptyIfNeeded() {
+    if (emptyEl && emptyEl.parentNode) {
+      emptyEl.remove();
+    }
+  }
+
+  function addMessage(role, text) {
+    hideEmptyIfNeeded();
+    const div = document.createElement("div");
+    div.className = "adviser-msg " + (role === "user" ? "adviser-msg-user" : "adviser-msg-assistant");
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function addTypingIndicator() {
+    hideEmptyIfNeeded();
+    const div = document.createElement("div");
+    div.className = "adviser-msg-typing";
+    div.textContent = "…";
+    div.setAttribute("aria-label", "Adviser is typing");
+    messagesEl.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function addErrorMessage(text, retryFn) {
+    hideEmptyIfNeeded();
+    const wrap = document.createElement("div");
+    wrap.className = "adviser-msg-error";
+    wrap.textContent = text;
+    if (retryFn) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Försök igen";
+      btn.addEventListener("click", () => {
+        wrap.remove();
+        retryFn();
+      });
+      wrap.appendChild(document.createElement("br"));
+      wrap.appendChild(btn);
+    }
+    messagesEl.appendChild(wrap);
+    scrollToBottom();
+    return wrap;
+  }
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // ---- Streaming request ---------------------------------------------
+  async function sendMessage(userText) {
+    if (streaming || !userText) return;
+    streaming = true;
+    sendBtn.disabled = true;
+    textarea.disabled = true;
+
+    // Push user message to history + UI.
+    history.push({ role: "user", content: userText });
+    addMessage("user", userText);
+
+    const typingEl = addTypingIndicator();
+    let assistantEl = null;
+    let assistantText = "";
+
+    const payload = {
+      messages: history.map((m) => ({ role: m.role, content: m.content })),
+      context: {
+        recommendation: latestRec,
+        form: latestForm,
+      },
+    };
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        let msg = `Server error (${res.status}).`;
+        try {
+          const data = await res.json();
+          if (data && data.error) msg = data.error;
+        } catch (_) {}
+        typingEl.remove();
+        addErrorMessage(msg, () => sendMessage(userText));
+        // Roll back the user turn so retry still has the user message.
+        return;
+      }
+
+      if (!res.body) {
+        throw new Error("No response body");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sep;
+        while ((sep = buffer.indexOf("\n\n")) >= 0) {
+          const rawEvent = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const line = rawEvent.split("\n").find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          const payloadStr = line.slice(5).trim();
+          if (payloadStr === "[DONE]") {
+            continue;
+          }
+          let evt;
+          try {
+            evt = JSON.parse(payloadStr);
+          } catch (_) {
+            continue;
+          }
+          if (evt.error) {
+            if (typingEl.parentNode) typingEl.remove();
+            addErrorMessage(
+              "Kunde inte svara — " + evt.error,
+              () => sendMessage(userText)
+            );
+            streaming = false;
+            sendBtn.disabled = false;
+            textarea.disabled = false;
+            textarea.focus();
+            return;
+          }
+          if (typeof evt.t === "string") {
+            if (!assistantEl) {
+              if (typingEl.parentNode) typingEl.remove();
+              assistantEl = addMessage("assistant", "");
+            }
+            assistantText += evt.t;
+            assistantEl.textContent = assistantText;
+            scrollToBottom();
+          }
+        }
+      }
+
+      if (typingEl.parentNode) typingEl.remove();
+      if (assistantText) {
+        history.push({ role: "assistant", content: assistantText });
+      } else if (!assistantEl) {
+        addErrorMessage(
+          "Kunde inte svara — kontrollera att servern har ANTHROPIC_API_KEY satt",
+          () => sendMessage(userText)
+        );
+      }
+    } catch (err) {
+      if (typingEl.parentNode) typingEl.remove();
+      addErrorMessage(
+        "Kunde inte svara — kontrollera att servern har ANTHROPIC_API_KEY satt",
+        () => sendMessage(userText)
+      );
+    } finally {
+      streaming = false;
+      sendBtn.disabled = false;
+      textarea.disabled = false;
+      textarea.value = "";
+      autoGrow();
+      textarea.focus();
+    }
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const txt = textarea.value.trim();
+    if (!txt) return;
+    sendMessage(txt);
+  });
+
+  // Initial layout sync.
+  syncLayout();
 })();

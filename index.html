@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HappyDays — Solar Transition Advisor</title>
-  <meta name="description" content="A simple advisor for Swedish households considering solar panels. Enter your location, energy usage, and priorities to see a suggested energy mix." />
+  <meta name="description" content="A simple advisor for Swedish households considering solar panels. Enter your location, energy usage, and priorities to see a suggested energy mix, payback period, and break-even chart." />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -36,28 +38,50 @@
       <h1 id="hero-title">Should you go solar?</h1>
       <p class="hero-sub">
         A simple advisor for Swedish households weighing up solar panels.
-        Tell us where you live, how much energy you use, and what matters
-        most — we'll suggest an energy mix.
+        Pick your location on the map, tell us your usage and priorities —
+        we'll suggest an energy mix, estimate a payback period, and show the break-even.
       </p>
     </section>
+
+    <!-- Screen-reader live region for result announcements -->
+    <div id="live-status" role="status" aria-live="polite" class="sr-only"></div>
 
     <section class="container" aria-labelledby="form-title">
       <div class="card">
         <h2 id="form-title">Your situation</h2>
         <form id="advisor-form" novalidate>
+
+          <!-- 1. MAP LOCATION PICKER -->
           <div class="field">
-            <label for="location">Location</label>
-            <input
-              type="text"
-              id="location"
-              name="location"
-              placeholder="Stockholm"
-              autocomplete="address-level2"
-              required
-            />
-            <p class="hint">Swedish city or region.</p>
+            <label id="map-label">Pick your location on the map</label>
+            <p class="hint">Click anywhere in Sweden to drop a marker. Drag it to fine-tune.</p>
+            <div
+              id="map"
+              role="application"
+              aria-labelledby="map-label"
+              aria-describedby="map-desc"
+            ></div>
+            <p id="map-desc" class="sr-only">
+              An interactive map of Sweden. Use the keyboard city picker below as an alternative to clicking the map.
+            </p>
+            <p class="map-readout" aria-live="polite">
+              <span class="muted">Selected: </span>
+              <span id="map-readout-value">no location chosen yet</span>
+            </p>
+            <input type="hidden" id="lat" name="lat" />
+            <input type="hidden" id="lng" name="lng" />
+
+            <div class="city-fallback">
+              <label for="city-select" class="muted-label">
+                Or pick a city (keyboard alternative):
+              </label>
+              <select id="city-select" name="city-select">
+                <option value="">— choose a city —</option>
+              </select>
+            </div>
           </div>
 
+          <!-- 2. ENERGY USAGE -->
           <div class="field">
             <label for="usage">Current energy usage (kWh/year)</label>
             <input
@@ -73,6 +97,30 @@
             <p class="hint">A rough estimate is fine.</p>
           </div>
 
+          <!-- 3. ROOF AREA -->
+          <div class="field">
+            <label for="roof-area">Roof area available (m²)</label>
+            <input
+              type="number"
+              id="roof-area"
+              name="roof-area"
+              placeholder="30"
+              min="0"
+              step="1"
+              inputmode="numeric"
+              required
+            />
+            <p class="hint">Roughly how much south/east/west-facing roof you can use.</p>
+          </div>
+
+          <!-- 4. PANEL PICKER -->
+          <div class="field">
+            <label for="panel-type">Panel type</label>
+            <select id="panel-type" name="panel-type"></select>
+            <p class="hint" id="panel-type-note">Pick "Auto" to let us maximise output for your budget.</p>
+          </div>
+
+          <!-- 5. BUDGET -->
           <div class="field">
             <label for="budget">
               Budget (SEK) <span class="muted">— optional</span>
@@ -89,29 +137,60 @@
             <p class="hint">Leave blank if you're just exploring.</p>
           </div>
 
+          <!-- 6. UPKEEP SLIDER -->
+          <div class="field">
+            <div class="slider-row single">
+              <label for="upkeep">Upkeep cost <span class="muted">(% of install cost / year)</span></label>
+              <input type="range" id="upkeep" name="upkeep" min="0" max="3" step="0.1" value="1" />
+              <output for="upkeep" id="upkeep-out">1.0%</output>
+            </div>
+            <p class="hint">Cleaning, inverter replacement, insurance — typically 0.5–1.5%.</p>
+          </div>
+
+          <!-- 7. SELL EXCESS -->
+          <div class="field">
+            <div class="checkbox-row">
+              <input type="checkbox" id="sell-excess" name="sell-excess" />
+              <label for="sell-excess">Sell excess production to the grid</label>
+            </div>
+            <div class="feed-in-row" id="feed-in-wrap" hidden>
+              <label for="feed-in-rate">Feed-in rate (öre/kWh)</label>
+              <input
+                type="number"
+                id="feed-in-rate"
+                name="feed-in-rate"
+                min="0"
+                step="1"
+                value="60"
+                inputmode="numeric"
+              />
+            </div>
+          </div>
+
+          <!-- 8. PRIORITIES (kept from v1) -->
           <fieldset class="field priorities">
             <legend>Your priorities</legend>
             <p class="hint">
               Use the sliders to set the <strong>relative importance</strong> of each goal
-              (1 = least important, 5 = most important). The weights are compared to each other.
+              (1 = least important, 5 = most important).
             </p>
 
             <div class="slider-row">
               <label for="w-cost">Cost <span class="muted">(save money)</span></label>
               <input type="range" id="w-cost" name="w-cost" min="1" max="5" step="1" value="3" />
-              <output for="w-cost" id="w-cost-out" aria-live="polite">3</output>
+              <output for="w-cost" id="w-cost-out">3</output>
             </div>
 
             <div class="slider-row">
               <label for="w-independence">Independence <span class="muted">(off the grid)</span></label>
               <input type="range" id="w-independence" name="w-independence" min="1" max="5" step="1" value="3" />
-              <output for="w-independence" id="w-independence-out" aria-live="polite">3</output>
+              <output for="w-independence" id="w-independence-out">3</output>
             </div>
 
             <div class="slider-row">
               <label for="w-sustainability">Sustainability <span class="muted">(low emissions)</span></label>
               <input type="range" id="w-sustainability" name="w-sustainability" min="1" max="5" step="1" value="3" />
-              <output for="w-sustainability" id="w-sustainability-out" aria-live="polite">3</output>
+              <output for="w-sustainability" id="w-sustainability-out">3</output>
             </div>
           </fieldset>
 
@@ -132,21 +211,60 @@
         <h2 id="results-title">Your suggested mix</h2>
         <p class="results-lead" id="results-lead"></p>
 
+        <!-- Zone + panel summary -->
+        <dl class="result-summary">
+          <div>
+            <dt>Electricity price zone</dt>
+            <dd><span class="zone-chip" id="zone-chip">—</span> <span id="zone-detail" class="muted"></span></dd>
+          </div>
+          <div>
+            <dt>Selected panel</dt>
+            <dd id="panel-summary">—</dd>
+          </div>
+          <div>
+            <dt>Nearest irradiance station</dt>
+            <dd id="irradiance-summary">—</dd>
+          </div>
+        </dl>
+
+        <!-- PAYBACK PERIOD — prominent -->
+        <div class="result-block payback">
+          <h3>Payback period</h3>
+          <p class="payback-value" id="payback-value">—</p>
+          <p class="metric-label" id="payback-label">years until your cumulative savings cover the install cost</p>
+        </div>
+
+        <!-- BREAK-EVEN CHART -->
+        <div class="result-block">
+          <h3>Break-even over 25 years</h3>
+          <p class="hint">
+            Cumulative SEK. Two lines: grid-only vs. solar-investment.
+            Crossover is your payback point.
+          </p>
+          <div class="chart-wrap">
+            <svg
+              id="break-even-chart"
+              viewBox="0 0 600 280"
+              role="img"
+              aria-label="25-year break-even chart comparing grid-only versus solar investment"
+              preserveAspectRatio="none"
+            ></svg>
+          </div>
+        </div>
+
         <div class="result-block">
           <h3>Recommended energy mix</h3>
           <div
             class="stacked-bar"
             role="img"
-            aria-label="Recommended energy mix stacked bar"
+            aria-label="Recommended energy mix: 0% solar, 0% grid"
             id="mix-bar"
           >
             <div class="seg seg-solar" id="seg-solar" style="width: 0%"></div>
-            <div class="seg seg-wind" id="seg-wind" style="width: 0%"></div>
             <div class="seg seg-grid" id="seg-grid" style="width: 0%"></div>
           </div>
           <ul class="legend" aria-hidden="true">
             <li><span class="swatch swatch-solar"></span> Solar <span id="pct-solar">0%</span></li>
-            <li><span class="swatch swatch-wind"></span> Wind <span id="pct-wind">0%</span></li>
             <li><span class="swatch swatch-grid"></span> Grid <span id="pct-grid">0%</span></li>
           </ul>
         </div>
@@ -169,17 +287,8 @@
           <h3>Cost over 10 years</h3>
           <p class="hint">
             Grid-only vs. recommended mix. Naive projection —
-            no inflation, no subsidies, no resale.
+            no inflation, no subsidies baked in here.
           </p>
-          <div class="chart-wrap">
-            <svg
-              id="cost-chart"
-              viewBox="0 0 600 260"
-              role="img"
-              aria-label="10-year cumulative cost comparison"
-              preserveAspectRatio="none"
-            ></svg>
-          </div>
           <div class="table-wrap">
             <table id="cost-table">
               <caption class="sr-only">Year-by-year cumulative cost, grid-only versus recommended mix</caption>
@@ -200,10 +309,86 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p>Data source: SMHI (planned) — calculations are currently placeholders.</p>
+      <p>
+        Irradiance data: SMHI Open Data (parameter 11, global irradiance, 3-year mean).
+        Electricity prices: Nord Pool 2022–2024 zone averages. Cost model is
+        illustrative — no inflation or subsidies.
+      </p>
     </div>
   </footer>
 
+  <!-- AI adviser side panel (v3) -->
+  <button
+    type="button"
+    id="adviser-fab"
+    class="adviser-fab"
+    aria-label="Open solar adviser"
+    aria-expanded="false"
+    aria-controls="adviser-panel"
+    hidden
+  >
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2z"/>
+    </svg>
+  </button>
+
+  <aside
+    id="adviser-panel"
+    class="adviser-panel"
+    aria-labelledby="adviser-title"
+    aria-hidden="false"
+  >
+    <header class="adviser-header">
+      <h2 id="adviser-title">Personal adviser</h2>
+      <button
+        type="button"
+        id="adviser-toggle"
+        class="adviser-toggle"
+        aria-label="Collapse adviser panel"
+        aria-expanded="true"
+        aria-controls="adviser-body"
+      >
+        <span id="adviser-toggle-icon" aria-hidden="true">&#9654;</span>
+      </button>
+    </header>
+    <div id="adviser-body" class="adviser-body">
+      <div
+        id="adviser-messages"
+        class="adviser-messages"
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation with adviser"
+      >
+        <div class="adviser-empty" id="adviser-empty">
+          Hej! Jag är din solpanelsrådgivare. Fråga mig vad du vill om solceller, kostnader, eller din installation.
+        </div>
+      </div>
+      <form class="adviser-input" id="adviser-form">
+        <label for="adviser-textarea" class="sr-only">Your question</label>
+        <textarea
+          id="adviser-textarea"
+          name="message"
+          rows="1"
+          placeholder="Skriv din fråga…"
+          aria-label="Write your question to the adviser"
+        ></textarea>
+        <button type="submit" id="adviser-send" class="adviser-send" aria-label="Send message">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M3 20v-6l13-2L3 10V4l19 8-19 8z"/>
+          </svg>
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <!-- Leaflet from unpkg CDN (only allowed dependency) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Local data + logic — plain <script> tags so `open index.html` works -->
+  <script src="data/panels.js" defer></script>
+  <script src="data/cities.js" defer></script>
+  <script src="calc.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

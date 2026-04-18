@@ -1,0 +1,105 @@
+{
+  "generated_at": "2026-04-18",
+  "source": "SMHI Open Data — parameter 11 (global irradiance), corrected-archive, 3-year mean kWh/m^2/year",
+  "parameter": "SMHI metobs parameter 11 (global irradiance)",
+  "stations": [
+    {
+      "id": "178985",
+      "name": "Tarfala Sol",
+      "lat": 67.9123,
+      "lng": 18.6101,
+      "annual_kwh_per_m2": 804.7
+    },
+    {
+      "id": "180025",
+      "name": "Kiruna Sol",
+      "lat": 67.8408,
+      "lng": 20.4105,
+      "annual_kwh_per_m2": 823.0
+    },
+    {
+      "id": "162015",
+      "name": "Luleå Sol",
+      "lat": 65.5436,
+      "lng": 22.1113,
+      "annual_kwh_per_m2": 931.5
+    },
+    {
+      "id": "140615",
+      "name": "Umeå Sol",
+      "lat": 63.8111,
+      "lng": 20.2398,
+      "annual_kwh_per_m2": 955.2
+    },
+    {
+      "id": "134615",
+      "name": "Östersund Sol",
+      "lat": 63.197,
+      "lng": 14.4798,
+      "annual_kwh_per_m2": 906.8
+    },
+    {
+      "id": "105285",
+      "name": "Borlänge Sol",
+      "lat": 60.4878,
+      "lng": 15.4297,
+      "annual_kwh_per_m2": 968.8
+    },
+    {
+      "id": "93235",
+      "name": "Karlstad Sol",
+      "lat": 59.3591,
+      "lng": 13.4719,
+      "annual_kwh_per_m2": 1020.1
+    },
+    {
+      "id": "98735",
+      "name": "Stockholm Sol",
+      "lat": 59.3534,
+      "lng": 18.0634,
+      "annual_kwh_per_m2": 1011.6
+    },
+    {
+      "id": "86655",
+      "name": "Norrköping Sol",
+      "lat": 58.5824,
+      "lng": 16.1485,
+      "annual_kwh_per_m2": 997.9
+    },
+    {
+      "id": "71415",
+      "name": "Göteborg Sol",
+      "lat": 57.6879,
+      "lng": 11.9796,
+      "annual_kwh_per_m2": 1012.5
+    },
+    {
+      "id": "78645",
+      "name": "Visby Sol",
+      "lat": 57.6727,
+      "lng": 18.3448,
+      "annual_kwh_per_m2": 1132.8
+    },
+    {
+      "id": "68545",
+      "name": "Hoburg Sol",
+      "lat": 56.921,
+      "lng": 18.1506,
+      "annual_kwh_per_m2": 1166.6
+    },
+    {
+      "id": "64565",
+      "name": "Växjö Sol",
+      "lat": 56.9269,
+      "lng": 14.7305,
+      "annual_kwh_per_m2": 1030.3
+    },
+    {
+      "id": "53445",
+      "name": "Lund Sol",
+      "lat": 55.7138,
+      "lng": 13.2124,
+      "annual_kwh_per_m2": 1077.8
+    }
+  ]
+}
