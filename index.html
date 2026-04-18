@@ -319,6 +319,18 @@
             </table>
           </div>
         </div>
+
+        <aside
+          id="advice-card"
+          class="result-block advice-card"
+          aria-live="polite"
+          aria-busy="false"
+        >
+          <h3>Verdict &amp; optimisation tips</h3>
+          <div id="advice-body" class="advice-body">
+            <p class="advice-placeholder">Generating advice based on your numbers…</p>
+          </div>
+        </aside>
       </div>
     </section>
   </main>
@@ -335,70 +347,6 @@
       </p>
     </div>
   </footer>
-
-  <!-- AI adviser side panel (v3) -->
-  <button
-    type="button"
-    id="adviser-fab"
-    class="adviser-fab"
-    aria-label="Open solar adviser"
-    aria-expanded="false"
-    aria-controls="adviser-panel"
-    hidden
-  >
-    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
-      <path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2z"/>
-    </svg>
-  </button>
-
-  <aside
-    id="adviser-panel"
-    class="adviser-panel"
-    aria-labelledby="adviser-title"
-    aria-hidden="false"
-  >
-    <header class="adviser-header">
-      <h2 id="adviser-title">Personal adviser</h2>
-      <button
-        type="button"
-        id="adviser-toggle"
-        class="adviser-toggle"
-        aria-label="Collapse adviser panel"
-        aria-expanded="true"
-        aria-controls="adviser-body"
-      >
-        <span id="adviser-toggle-icon" aria-hidden="true">&#9654;</span>
-      </button>
-    </header>
-    <div id="adviser-body" class="adviser-body">
-      <div
-        id="adviser-messages"
-        class="adviser-messages"
-        role="log"
-        aria-live="polite"
-        aria-label="Conversation with adviser"
-      >
-        <div class="adviser-empty" id="adviser-empty">
-          Hej! Jag är din solpanelsrådgivare. Fråga mig vad du vill om solceller, kostnader, eller din installation.
-        </div>
-      </div>
-      <form class="adviser-input" id="adviser-form">
-        <label for="adviser-textarea" class="sr-only">Your question</label>
-        <textarea
-          id="adviser-textarea"
-          name="message"
-          rows="1"
-          placeholder="Skriv din fråga…"
-          aria-label="Write your question to the adviser"
-        ></textarea>
-        <button type="submit" id="adviser-send" class="adviser-send" aria-label="Send message">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
-            <path fill="currentColor" d="M3 20v-6l13-2L3 10V4l19 8-19 8z"/>
-          </svg>
-        </button>
-      </form>
-    </div>
-  </aside>
 
   <!-- Leaflet from unpkg CDN (only allowed dependency) -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

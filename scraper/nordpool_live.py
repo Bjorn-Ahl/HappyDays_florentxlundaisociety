@@ -312,35 +312,47 @@ def write_json_atomic(path: Path, payload: dict) -> None:
 
 def run_forever(
     *,
-    zone: str,
+    zones: list[str],
     output_path: Path,
     poll_seconds: int,
     fetch_seconds: int,
     dry_run: bool,
 ) -> None:
-    cache = PriceCache(zone)
+    caches = {z: PriceCache(z) for z in zones}
     print(
-        f"[nordpool_live] zone={zone} out={output_path} poll={poll_seconds}s "
-        f"fetch={fetch_seconds}s dry_run={dry_run}",
+        f"[nordpool_live] zones={','.join(zones)} out={output_path} "
+        f"poll={poll_seconds}s fetch={fetch_seconds}s dry_run={dry_run}",
         flush=True,
     )
     while True:
         now = datetime.now(timezone.utc).astimezone()
-        window = assemble_hourly_window(cache, now, refetch_seconds=fetch_seconds)
-        stale = not window or window[0]["hour_start"] != hour_floor(now)
-        payload = build_payload(zone, now, window, stale)
+        zone_blocks: dict[str, dict] = {}
+        log_bits: list[str] = []
+        for z in zones:
+            window = assemble_hourly_window(
+                caches[z], now, refetch_seconds=fetch_seconds
+            )
+            stale = not window or window[0]["hour_start"] != hour_floor(now)
+            zone_blocks[z] = build_payload(z, now, window, stale)
+            cur = zone_blocks[z]["current"]
+            log_bits.append(
+                f"{z}={cur['price_ore']:.1f}ö/{cur['tier']}" if cur else f"{z}=n/a"
+            )
 
-        cur = payload["current"]
-        cur_str = f"{cur['price_ore']:.1f} öre ({cur['tier']})" if cur else "n/a"
+        combined = {
+            "generated_at": now.astimezone().isoformat(timespec="seconds"),
+            "source": "elprisetjustnu.se day-ahead, hourly means from 15-min slots",
+            "zones": zone_blocks,
+        }
+
         print(
-            f"[{now.isoformat(timespec='seconds')}] current={cur_str} "
-            f"window={len(window)}h stale={stale}",
+            f"[{now.isoformat(timespec='seconds')}] " + " ".join(log_bits),
             flush=True,
         )
 
         if not dry_run:
             try:
-                write_json_atomic(output_path, payload)
+                write_json_atomic(output_path, combined)
             except OSError as e:
                 print(f"  [warn] write failed: {e}", file=sys.stderr)
 
@@ -348,20 +360,35 @@ def run_forever(
 
 
 def main() -> int:
-    zone = os.environ.get("HAPPYDAYS_ZONE", "SE4").strip().upper()
+    # HAPPYDAYS_ZONES (plural) takes precedence; falls back to HAPPYDAYS_ZONE
+    # (legacy single-zone) or all four zones by default.
+    all_zones = ["SE1", "SE2", "SE3", "SE4"]
+    raw_plural = os.environ.get("HAPPYDAYS_ZONES", "").strip()
+    raw_single = os.environ.get("HAPPYDAYS_ZONE", "").strip()
+    if raw_plural:
+        zones = [z.strip().upper() for z in raw_plural.split(",") if z.strip()]
+    elif raw_single:
+        zones = [raw_single.upper()]
+    else:
+        zones = list(all_zones)
+
     poll = int(os.environ.get("POLL_SECONDS", "60"))
     fetch = int(os.environ.get("FETCH_SECONDS", "900"))
     dry_run = os.environ.get("DRY_RUN", "").strip() == "1"
     output_override = os.environ.get("OUTPUT_PATH", "").strip()
     output_path = Path(output_override) if output_override else DEFAULT_OUTPUT
 
-    if zone not in {"SE1", "SE2", "SE3", "SE4"}:
-        print(f"error: HAPPYDAYS_ZONE must be SE1-SE4, got {zone!r}", file=sys.stderr)
+    bad = [z for z in zones if z not in set(all_zones)]
+    if bad or not zones:
+        print(
+            f"error: zones must be a subset of SE1-SE4, got {zones!r}",
+            file=sys.stderr,
+        )
         return 2
 
     try:
         run_forever(
-            zone=zone,
+            zones=zones,
             output_path=output_path,
             poll_seconds=poll,
             fetch_seconds=fetch,

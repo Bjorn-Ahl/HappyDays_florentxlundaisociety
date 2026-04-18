@@ -39,6 +39,25 @@ ROOT_DIR = SERVER_DIR.parent  # repo root (index.html lives here)
 PORT = 8765
 HOST = "127.0.0.1"
 
+
+def _load_dotenv(path: Path) -> None:
+    # Minimal .env loader — no new dependency. Existing env vars win,
+    # so `export ANTHROPIC_API_KEY=...` still overrides the file.
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(ROOT_DIR / ".env")
+
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".htm": "text/html; charset=utf-8",
@@ -580,6 +599,11 @@ class HappyDaysHandler(BaseHTTPRequestHandler):
             self._log_access(status, started)
             return
 
+        if path == "/api/advice":
+            status = self._handle_advice()
+            self._log_access(status, started)
+            return
+
         self._send_json(404, {"error": "unknown endpoint"})
         self._log_access(404, started)
 
@@ -747,6 +771,116 @@ class HappyDaysHandler(BaseHTTPRequestHandler):
             emit({"error": str(exc)})
 
         emit_done()
+        return 200
+
+    # ---- advice (auto, non-streaming) --------------------------------
+    def _handle_advice(self) -> int:
+        ip = self._client_ip()
+
+        if rate_limited(ip):
+            self._send_json(
+                429,
+                {"error": "Too many requests — 20 per minute. Please wait."},
+            )
+            return 429
+
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0:
+            self._send_json(400, {"error": "empty body"})
+            return 400
+        try:
+            raw = self.rfile.read(length)
+            body = json.loads(raw.decode("utf-8"))
+        except Exception:
+            self._send_json(400, {"error": "invalid JSON"})
+            return 400
+
+        context = body.get("context") or {}
+        if not isinstance(context, dict) or not context.get("recommendation"):
+            self._send_json(400, {"error": "missing recommendation context"})
+            return 400
+
+        client = get_anthropic_client()
+        if client is None:
+            if not _anthropic_available:
+                self._send_json(
+                    503,
+                    {
+                        "error": (
+                            "Auto-advice is unavailable — the anthropic SDK "
+                            "isn't installed on the server."
+                        )
+                    },
+                )
+                return 503
+            self._send_json(
+                503,
+                {
+                    "error": (
+                        "Auto-advice is unavailable — ANTHROPIC_API_KEY is "
+                        "not set on the dev server."
+                    )
+                },
+            )
+            return 503
+
+        dynamic = (
+            "HappyDays recommendation snapshot (JSON). Use these numbers "
+            "verbatim — do not invent new ones.\n"
+            + json.dumps(context, ensure_ascii=False, sort_keys=True)
+        )
+        directive = (
+            "You are writing a compact advice card embedded in the "
+            "HappyDays results page (NOT a chat reply). Write in English. "
+            "Produce exactly two sections with these markdown headings:\n\n"
+            "#### Is it worth it?\n"
+            "2-4 sentences. Reference specific numbers from the snapshot "
+            "(payback years, annual savings, install cost, self-consumption "
+            "ratio). Be direct about the verdict.\n\n"
+            "#### How to optimise your setup\n"
+            "2-3 concrete, actionable bullets tied to the user's actual "
+            "inputs. Examples of levers to check: toggling sell-excess if "
+            "it's off, adding / resizing a battery (especially when hasEv "
+            "is true), matching battery capacity to ~1x daily usage, "
+            "switching panel type, or lifting the budget if it's capping "
+            "the install. Skip any lever that's already well-tuned.\n\n"
+            "Total length under 180 words. Do not greet, do not ask "
+            "questions, do not include a sign-off."
+        )
+
+        try:
+            message = client.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=600,
+                system=[
+                    {
+                        "type": "text",
+                        "text": CACHED_SYSTEM_TEXT,
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {"type": "text", "text": dynamic},
+                ],
+                messages=[{"role": "user", "content": directive}],
+            )
+            parts = []
+            for block in message.content or []:
+                text = getattr(block, "text", None)
+                if text:
+                    parts.append(text)
+            text_out = "".join(parts).strip()
+            usage = getattr(message, "usage", None)
+            if usage is not None:
+                print(f"[advice] usage: {usage}", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[advice] error: {exc}", file=sys.stderr, flush=True)
+            self._send_json(502, {"error": f"Model call failed: {exc}"})
+            return 502
+
+        if not text_out:
+            self._send_json(502, {"error": "Model returned no text."})
+            return 502
+
+        self._send_json(200, {"text": text_out})
         return 200
 
 
