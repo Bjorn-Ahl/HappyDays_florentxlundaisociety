@@ -599,303 +599,58 @@ tbody tr:last-child td {
   .seg {
     transition: none;
   }
-  .adviser-panel {
-    transition: none !important;
-  }
 }
 
-/* ---------- AI adviser side panel (v3) ---------- */
+/* ---------- Auto-generated advice card ---------- */
 
-.adviser-panel {
-  position: fixed;
-  top: 50%;
-  right: 16px;
-  transform: translateY(-50%);
-  width: 400px;
-  height: 80vh;
-  max-height: 760px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  z-index: 40;
-  transition: transform 200ms ease, width 200ms ease;
-}
-
-.adviser-panel.is-collapsed {
-  width: 44px;
-  height: auto;
-  max-height: none;
-}
-
-.adviser-panel.is-collapsed .adviser-body {
-  display: none;
-}
-
-.adviser-panel.is-collapsed .adviser-header h2 {
-  display: none;
-}
-
-.adviser-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+.advice-card {
   background: #f1f6f3;
-  gap: 8px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
 }
 
-.adviser-panel.is-collapsed .adviser-header {
-  border-bottom: 0;
-  padding: 8px;
-  justify-content: center;
+.advice-body {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--text);
 }
 
-.adviser-header h2 {
-  margin: 0;
-  font-size: 1rem;
+.advice-body p {
+  margin: 0 0 10px;
+}
+
+.advice-body p:last-child {
+  margin-bottom: 0;
+}
+
+.advice-body h4 {
+  margin: 14px 0 6px;
+  font-size: 0.95rem;
   font-weight: 700;
-  color: var(--text);
-}
-
-.adviser-toggle {
-  appearance: none;
-  border: 0;
-  background: transparent;
   color: var(--primary);
-  padding: 6px 8px;
-  font-size: 1rem;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  min-width: 28px;
-  min-height: 28px;
-  line-height: 1;
 }
 
-.adviser-toggle:hover {
-  background: rgba(47, 107, 83, 0.08);
+.advice-body h4:first-child {
+  margin-top: 0;
 }
 
-.adviser-body {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
+.advice-body ul,
+.advice-body ol {
+  margin: 0 0 10px 1.2em;
+  padding: 0;
 }
 
-.adviser-messages {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  scroll-behavior: smooth;
+.advice-body li {
+  margin: 0 0 4px;
 }
 
-.adviser-empty {
-  margin: auto 0;
-  text-align: center;
+.advice-placeholder {
   color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1.5;
-  padding: 8px 4px;
+  font-style: italic;
 }
 
-.adviser-msg {
-  max-width: 85%;
-  padding: 10px 13px;
-  border-radius: 14px;
-  font-size: 0.95rem;
-  line-height: 1.45;
-  word-wrap: break-word;
-  white-space: pre-wrap;
-}
-
-.adviser-msg-user {
-  align-self: flex-end;
-  background: var(--primary);
-  color: var(--primary-contrast);
-  border-bottom-right-radius: 4px;
-}
-
-.adviser-msg-assistant {
-  align-self: flex-start;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-}
-
-.adviser-msg-typing {
-  align-self: flex-start;
-  background: var(--surface);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-  padding: 10px 13px;
-  font-size: 1rem;
-  letter-spacing: 2px;
-}
-
-.adviser-msg-error {
-  align-self: stretch;
-  background: #fdecec;
-  border: 1px solid #f3b9b9;
+.advice-error {
   color: #8a1f1f;
-  padding: 10px 13px;
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-}
-
-.adviser-msg-error button {
-  margin-top: 8px;
-  appearance: none;
-  border: 1px solid #8a1f1f;
-  background: transparent;
-  color: #8a1f1f;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-  min-height: 28px;
-}
-
-.adviser-msg-error button:hover {
-  background: #8a1f1f;
-  color: #fff;
-}
-
-.adviser-input {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.adviser-input textarea {
-  flex: 1 1 auto;
-  resize: none;
-  padding: 8px 10px;
-  font: inherit;
-  font-size: 0.95rem;
-  line-height: 1.4;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  max-height: 168px; /* ~6 rows */
-  min-height: 38px;
-  overflow-y: auto;
-}
-
-.adviser-input textarea:focus {
-  border-color: var(--primary);
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(47, 107, 83, 0.18);
-}
-
-.adviser-send {
-  appearance: none;
-  border: 0;
-  background: var(--primary);
-  color: var(--primary-contrast);
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex: 0 0 auto;
-}
-
-.adviser-send:hover:not(:disabled) {
-  background: var(--primary-hover);
-}
-
-.adviser-send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Floating action button (mobile) */
-.adviser-fab {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  width: 56px;
-  height: 56px;
-  border-radius: 999px;
-  background: var(--primary);
-  color: var(--primary-contrast);
-  border: 0;
-  box-shadow: var(--shadow);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 41;
-}
-
-.adviser-fab:hover {
-  background: var(--primary-hover);
-}
-
-/* Desktop: push main content away from the side panel so it doesn't overlap */
-@media (min-width: 900px) {
-  main {
-    padding-right: 432px;
-  }
-  .site-footer > .container {
-    padding-right: 432px;
-  }
-  body.adviser-collapsed main {
-    padding-right: 72px;
-  }
-  body.adviser-collapsed .site-footer > .container {
-    padding-right: 72px;
-  }
-}
-
-/* Mobile: hide side panel, show FAB; expand into full-screen overlay */
-@media (max-width: 899px) {
-  .adviser-panel {
-    position: fixed;
-    inset: 0;
-    top: 0;
-    right: 0;
-    transform: none;
-    width: 100%;
-    height: 100%;
-    max-height: none;
-    border-radius: 0;
-    border: 0;
-    z-index: 50;
-  }
-  .adviser-panel[aria-hidden="true"] {
-    display: none;
-  }
-  .adviser-panel.is-collapsed {
-    /* collapse state isn't used on mobile; we just hide the panel */
-    display: none;
-  }
-  .adviser-fab {
-    display: inline-flex;
-  }
-  .adviser-fab[hidden] {
-    display: none !important;
-  }
-  .adviser-toggle[data-role="desktop-toggle"] {
-    display: none;
-  }
 }
 
 /* ==========================================================================
